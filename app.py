@@ -7,6 +7,7 @@ app = Flask(__name__)
 
 VK_TOKEN = os.getenv("VK_TOKEN")
 VK_GROUP_ID = os.getenv("VK_GROUP_ID")
+CONFIRM_CODE = os.getenv("CONFIRM_CODE")
 
 
 @app.route("/")
@@ -21,13 +22,18 @@ def index():
     )
 
 
-@app.route("/vk", methods=["GET", "POST"])
+@app.route("/vk", methods=["POST"])
 def vk_callback():
-    if request.method == "GET":
-        return jsonify({"status": "ok", "endpoint": "vk"})
-
     payload = request.get_json(silent=True) or {}
-    return jsonify({"status": "ok", "received": payload})
+    event_type = payload.get("type")
+
+    if event_type == "confirmation":
+        return CONFIRM_CODE or ""
+
+    if event_type == "message_new":
+        return "ok"
+
+    return "ok"
 
 
 if __name__ == "__main__":
