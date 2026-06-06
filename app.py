@@ -1,7 +1,9 @@
 import logging
 import os
+import random
 
 from flask import Flask, Response, jsonify, request
+import requests
 
 
 app = Flask(__name__)
@@ -10,6 +12,43 @@ logging.basicConfig(level=logging.INFO)
 VK_TOKEN = os.getenv("VK_TOKEN")
 VK_GROUP_ID = os.getenv("VK_GROUP_ID")
 VK_CONFIRMATION_RESPONSE = "dfe8da6d"
+VK_API_VERSION = "5.199"
+AUTO_REPLY_TEXT = """Привет!
+Максим на связи.
+
+Скажите пожалуйста:
+
+1. Сколько человек?
+2. Какие даты отдыха?
+3. Что интереснее:
+- острова
+- экскурсии
+- море
+
+Подберу лучший вариант за 2 минуты."""
+
+
+def send_vk_message(peer_id, message):
+    if not VK_TOKEN:
+        app.logger.error("VK_TOKEN is not configured")
+        return
+
+    response = requests.post(
+        "https://api.vk.com/method/messages.send",
+        data={
+            "access_token": VK_TOKEN,
+            "v": VK_API_VERSION,
+            "peer_id": peer_id,
+            "message": message,
+            "random_id": random.randint(1, 2_147_483_647),
+        },
+        timeout=10,
+    )
+    response.raise_for_status()
+
+    result = response.json()
+    if "error" in result:
+        app.logger.error("VK messages.send error: %s", result["error"])
 
 
 @app.route("/")
@@ -35,6 +74,14 @@ def vk_callback():
         return Response(VK_CONFIRMATION_RESPONSE, mimetype="text/plain")
 
     if event_type == "message_new":
+        message = payload.get("object", {}).get("message", {})
+        peer_id = message.get("peer_id")
+
+        if peer_id:
+            send_vk_message(peer_id, AUTO_REPLY_TEXT)
+        else:
+            app.logger.warning("VK message_new without peer_id: %s", payload)
+
         return "ok"
 
     return "ok"
