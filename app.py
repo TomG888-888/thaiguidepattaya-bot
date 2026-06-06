@@ -6,7 +6,14 @@ from flask import Flask, Response, jsonify, request
 import requests
 
 from ai_manager import generate_reply
-from database import add_message, get_message_count, get_recent_messages, init_db
+from database import (
+    add_message,
+    create_lead,
+    get_lead_status_counts,
+    get_message_count,
+    get_recent_messages,
+    init_db,
+)
 
 
 app = Flask(__name__)
@@ -30,6 +37,17 @@ AUTO_REPLY_TEXT = """Привет!
 - море
 
 Подберу лучший вариант за 2 минуты."""
+
+
+def format_lead_stats():
+    counts = get_lead_status_counts()
+    return (
+        "Лиды по статусам:\n"
+        f"new: {counts['new']}\n"
+        f"active: {counts['active']}\n"
+        f"booked: {counts['booked']}\n"
+        f"lost: {counts['lost']}"
+    )
 
 
 def send_vk_message(peer_id, message):
@@ -91,9 +109,16 @@ def vk_callback():
 
         if peer_id:
             is_first_message = get_message_count(peer_id) == 0
+            if is_first_message:
+                create_lead(peer_id)
+
             add_message(peer_id, "user", text)
 
-            if is_first_message:
+            if text.strip() == "/stats":
+                reply = format_lead_stats()
+                if send_vk_message(peer_id, reply):
+                    add_message(peer_id, "assistant", reply)
+            elif is_first_message:
                 if send_vk_message(peer_id, AUTO_REPLY_TEXT):
                     add_message(peer_id, "assistant", AUTO_REPLY_TEXT)
             else:

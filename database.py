@@ -29,6 +29,17 @@ def init_db():
             ON messages (peer_id, id)
             """
         )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS leads (
+                peer_id INTEGER PRIMARY KEY,
+                name TEXT,
+                first_contact TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                status TEXT NOT NULL DEFAULT 'new'
+                    CHECK (status IN ('new', 'active', 'booked', 'lost'))
+            )
+            """
+        )
         connection.commit()
 
 
@@ -84,3 +95,31 @@ def get_recent_messages(peer_id, limit=20):
             (peer_id, limit),
         )
         return [{"role": role, "content": content} for role, content in cursor.fetchall()]
+
+
+def create_lead(peer_id, name=None):
+    with closing(get_connection()) as connection:
+        connection.execute(
+            """
+            INSERT OR IGNORE INTO leads (peer_id, name, status)
+            VALUES (?, ?, 'new')
+            """,
+            (peer_id, name),
+        )
+        connection.commit()
+
+
+def get_lead_status_counts():
+    statuses = ("new", "active", "booked", "lost")
+
+    with closing(get_connection()) as connection:
+        cursor = connection.execute(
+            """
+            SELECT status, COUNT(*)
+            FROM leads
+            GROUP BY status
+            """
+        )
+        counts = {status: 0 for status in statuses}
+        counts.update(dict(cursor.fetchall()))
+        return counts
