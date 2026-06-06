@@ -5,6 +5,8 @@ import random
 from flask import Flask, Response, jsonify, request
 import requests
 
+from ai_manager import generate_reply
+
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -26,29 +28,37 @@ AUTO_REPLY_TEXT = """Привет!
 - море
 
 Подберу лучший вариант за 2 минуты."""
+OPEN_DIALOGS = set()
 
 
 def send_vk_message(peer_id, message):
     if not VK_TOKEN:
         app.logger.error("VK_TOKEN is not configured")
-        return
+        return False
 
-    response = requests.post(
-        "https://api.vk.com/method/messages.send",
-        data={
-            "access_token": VK_TOKEN,
-            "v": VK_API_VERSION,
-            "peer_id": peer_id,
-            "message": message,
-            "random_id": random.randint(1, 2_147_483_647),
-        },
-        timeout=10,
-    )
-    response.raise_for_status()
+    try:
+        response = requests.post(
+            "https://api.vk.com/method/messages.send",
+            data={
+                "access_token": VK_TOKEN,
+                "v": VK_API_VERSION,
+                "peer_id": peer_id,
+                "message": message,
+                "random_id": random.randint(1, 2_147_483_647),
+            },
+            timeout=10,
+        )
+        response.raise_for_status()
+    except requests.RequestException:
+        app.logger.exception("VK messages.send request failed")
+        return False
 
     result = response.json()
     if "error" in result:
         app.logger.error("VK messages.send error: %s", result["error"])
+        return False
+
+    return True
 
 
 @app.route("/")
@@ -76,9 +86,18 @@ def vk_callback():
     if event_type == "message_new":
         message = payload.get("object", {}).get("message", {})
         peer_id = message.get("peer_id")
+        text = message.get("text", "")
 
         if peer_id:
-            send_vk_message(peer_id, AUTO_REPLY_TEXT)
+            if peer_id in OPEN_DIALOGS:
+                reply = generate_reply(text)
+                if reply:
+                    send_vk_message(peer_id, reply)
+                else:
+                    app.logger.error("No GPT reply generated for peer_id=%s", peer_id)
+            else:
+                OPEN_DIALOGS.add(peer_id)
+                send_vk_message(peer_id, AUTO_REPLY_TEXT)
         else:
             app.logger.warning("VK message_new without peer_id: %s", payload)
 
