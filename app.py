@@ -1,13 +1,15 @@
+import logging
 import os
 
-from flask import Flask, jsonify, request
+from flask import Flask, Response, jsonify, request
 
 
 app = Flask(__name__)
+logging.basicConfig(level=logging.INFO)
 
 VK_TOKEN = os.getenv("VK_TOKEN")
 VK_GROUP_ID = os.getenv("VK_GROUP_ID")
-CONFIRM_CODE = os.getenv("CONFIRM_CODE")
+VK_CONFIRMATION_RESPONSE = "dfe8da6d"
 
 
 @app.route("/")
@@ -25,10 +27,12 @@ def index():
 @app.route("/vk", methods=["POST"])
 def vk_callback():
     payload = request.get_json(silent=True) or {}
+    app.logger.info("VK callback payload: %s", payload)
+
     event_type = payload.get("type")
 
     if event_type == "confirmation":
-        return CONFIRM_CODE or ""
+        return Response(VK_CONFIRMATION_RESPONSE, mimetype="text/plain")
 
     if event_type == "message_new":
         return "ok"
