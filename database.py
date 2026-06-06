@@ -123,3 +123,32 @@ def get_lead_status_counts():
         counts = {status: 0 for status in statuses}
         counts.update(dict(cursor.fetchall()))
         return counts
+
+
+def get_leads():
+    with closing(get_connection()) as connection:
+        cursor = connection.execute(
+            """
+            SELECT peer_id, first_contact, status
+            FROM leads
+            ORDER BY first_contact DESC
+            """
+        )
+        return [
+            {"peer_id": peer_id, "first_contact": first_contact, "status": status}
+            for peer_id, first_contact, status in cursor.fetchall()
+        ]
+
+
+def update_lead_status(peer_id, status):
+    with closing(get_connection()) as connection:
+        cursor = connection.execute(
+            """
+            UPDATE leads
+            SET status = ?
+            WHERE peer_id = ?
+            """,
+            (status, peer_id),
+        )
+        connection.commit()
+        return cursor.rowcount > 0
