@@ -177,21 +177,26 @@ def vk_callback():
 
             add_message(peer_id, "user", text)
 
-            admin_reply = handle_admin_command(sender_id, text.strip())
-            if admin_reply:
-                if send_vk_message(peer_id, admin_reply):
-                    add_message(peer_id, "assistant", admin_reply)
-            elif is_first_message:
-                if send_vk_message(peer_id, AUTO_REPLY_TEXT):
-                    add_message(peer_id, "assistant", AUTO_REPLY_TEXT)
+            if text.strip() == "/myid":
+                reply = f"Ваш VK ID: {sender_id}"
+                if send_vk_message(peer_id, reply):
+                    add_message(peer_id, "assistant", reply)
             else:
-                history = get_recent_messages(peer_id, limit=20)
-                reply = generate_reply(text, history=history)
-                if reply:
-                    if send_vk_message(peer_id, reply):
-                        add_message(peer_id, "assistant", reply)
+                admin_reply = handle_admin_command(sender_id, text.strip())
+                if admin_reply:
+                    if send_vk_message(peer_id, admin_reply):
+                        add_message(peer_id, "assistant", admin_reply)
+                elif is_first_message:
+                    if send_vk_message(peer_id, AUTO_REPLY_TEXT):
+                        add_message(peer_id, "assistant", AUTO_REPLY_TEXT)
                 else:
-                    app.logger.error("No GPT reply generated for peer_id=%s", peer_id)
+                    history = get_recent_messages(peer_id, limit=20)
+                    reply = generate_reply(text, history=history)
+                    if reply:
+                        if send_vk_message(peer_id, reply):
+                            add_message(peer_id, "assistant", reply)
+                    else:
+                        app.logger.error("No GPT reply generated for peer_id=%s", peer_id)
         else:
             app.logger.warning("VK message_new without peer_id: %s", payload)
 
