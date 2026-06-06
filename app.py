@@ -6,10 +6,12 @@ from flask import Flask, Response, jsonify, request
 import requests
 
 from ai_manager import generate_reply
+from database import add_message, get_message_count, get_recent_messages, init_db
 
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
+init_db()
 
 VK_TOKEN = os.getenv("VK_TOKEN")
 VK_GROUP_ID = os.getenv("VK_GROUP_ID")
@@ -28,7 +30,6 @@ AUTO_REPLY_TEXT = """Привет!
 - море
 
 Подберу лучший вариант за 2 минуты."""
-OPEN_DIALOGS = set()
 
 
 def send_vk_message(peer_id, message):
@@ -89,15 +90,20 @@ def vk_callback():
         text = message.get("text", "")
 
         if peer_id:
-            if peer_id in OPEN_DIALOGS:
-                reply = generate_reply(text)
+            is_first_message = get_message_count(peer_id) == 0
+            add_message(peer_id, "user", text)
+
+            if is_first_message:
+                if send_vk_message(peer_id, AUTO_REPLY_TEXT):
+                    add_message(peer_id, "assistant", AUTO_REPLY_TEXT)
+            else:
+                history = get_recent_messages(peer_id, limit=20)
+                reply = generate_reply(text, history=history)
                 if reply:
-                    send_vk_message(peer_id, reply)
+                    if send_vk_message(peer_id, reply):
+                        add_message(peer_id, "assistant", reply)
                 else:
                     app.logger.error("No GPT reply generated for peer_id=%s", peer_id)
-            else:
-                OPEN_DIALOGS.add(peer_id)
-                send_vk_message(peer_id, AUTO_REPLY_TEXT)
         else:
             app.logger.warning("VK message_new without peer_id: %s", payload)
 

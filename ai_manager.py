@@ -16,17 +16,18 @@ SYSTEM_PROMPT = """Ты Максим Орлов, русскоязычный ги
 Пиши коротко, живым человеческим языком, без канцелярита."""
 
 
-def generate_reply(user_message):
+def generate_reply(user_message, history=None):
     if not OPENAI_API_KEY:
         logger.error("OPENAI_API_KEY is not configured")
         return None
 
     try:
         client = OpenAI(api_key=OPENAI_API_KEY)
+        messages = history or [{"role": "user", "content": user_message}]
         response = client.responses.create(
             model=OPENAI_MODEL,
             instructions=SYSTEM_PROMPT,
-            input=user_message,
+            input=messages,
         )
         return response.output_text.strip()
     except Exception:
