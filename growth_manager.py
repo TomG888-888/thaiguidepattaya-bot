@@ -2,6 +2,9 @@ from database import get_lead_status_counts
 from tour_catalog import TOUR_CATALOG
 
 
+PHOTO_SLOT_FALLBACKS = ["обложка", "фото 1", "фото 2", "фото 3", "фото 4"]
+
+
 def get_tour_keys_by_status(status):
     return [
         tour_key
@@ -12,7 +15,11 @@ def get_tour_keys_by_status(status):
 
 def is_missing_photos(tour):
     photos = tour.get("photos") or {}
-    return not photos.get("main") or not photos.get("gallery")
+    gallery = photos.get("gallery") or []
+    return not photos.get("cover") or any(
+        gallery_index >= len(gallery) or not gallery[gallery_index]
+        for gallery_index in range(4)
+    )
 
 
 def get_missing_photo_requirements(tour):
@@ -21,15 +28,22 @@ def get_missing_photo_requirements(tour):
 
     photos = tour.get("photos") or {}
     required_photos = photos.get("required") or []
-    if required_photos:
-        return required_photos
+    gallery = photos.get("gallery") or []
+    missing_slots = []
 
-    missing_photos = []
-    if not photos.get("main"):
-        missing_photos.append("главное фото тура")
-    if not photos.get("gallery"):
-        missing_photos.append("фото для галереи")
-    return missing_photos
+    if not photos.get("cover"):
+        missing_slots.append(0)
+
+    for gallery_index in range(4):
+        if gallery_index >= len(gallery) or not gallery[gallery_index]:
+            missing_slots.append(gallery_index + 1)
+
+    photo_requirements = required_photos or PHOTO_SLOT_FALLBACKS
+    return [
+        photo_requirements[slot_index]
+        for slot_index in missing_slots
+        if slot_index < len(photo_requirements)
+    ][:5]
 
 
 def is_missing_price(tour):
@@ -69,7 +83,7 @@ def build_recommendations(active_tours, draft_tours, tours_without_photos, tours
         recommendations.append("Довести draft-туры до полного описания, цен и фото.")
 
     if tours_without_photos:
-        recommendations.append("Добавить main и gallery фото для активных товаров.")
+        recommendations.append("Добавить cover и 4 gallery-фото для активных товаров.")
 
     if tours_without_price:
         recommendations.append("Проверить цены или price_from у товаров без цены.")
