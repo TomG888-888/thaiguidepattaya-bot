@@ -22,7 +22,7 @@ from database import (
     update_lead_stage,
     update_lead_status,
 )
-from growth_manager import generate_admin_audit
+from growth_manager import generate_admin_audit, generate_photo_audit
 from product_manager import AVAILABLE_TOUR_KEYS, generate_product_card
 from seasonal_manager import get_current_season, init_current_season, set_current_season
 from tour_catalog import TOUR_CATALOG, get_public_tour, normalize_tour_key
@@ -56,6 +56,7 @@ ADMIN_HELP_TEXT = """Доступные команды:
 
 /help
 /admin_audit
+/photo_audit
 /stats
 /leads
 /post expert
@@ -448,6 +449,7 @@ def handle_admin_command(peer_id, text):
         (
             "/help",
             "/admin_audit",
+            "/photo_audit",
             "/stats",
             "/leads",
             "/post",
@@ -470,6 +472,9 @@ def handle_admin_command(peer_id, text):
 
     if text == "/admin_audit":
         return generate_admin_audit()
+
+    if text == "/photo_audit":
+        return generate_photo_audit()
 
     if text == "/stats":
         return format_lead_stats()

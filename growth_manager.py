@@ -6,6 +6,7 @@ from tour_catalog import TOUR_CATALOG
 
 PHOTO_SLOT_FALLBACKS = ["обложка", "фото 1", "фото 2", "фото 3", "фото 4"]
 PHOTO_FILENAMES = ["cover.jpg", "gallery_1.jpg", "gallery_2.jpg", "gallery_3.jpg", "gallery_4.jpg"]
+PHOTO_SLOT_NAMES = ["cover", "gallery_1", "gallery_2", "gallery_3", "gallery_4"]
 STATIC_TOURS_DIR = Path(__file__).resolve().parent / "static" / "tours"
 
 
@@ -115,6 +116,31 @@ def format_lead_stage_counts():
     for stage in ("new", "qualified", "offer_sent", "booked", "lost"):
         lines.append(f"- {stage}: {counts.get(stage, 0)}")
     return "\n".join(lines)
+
+
+def format_tour_photo_audit(tour_key, tour):
+    photo_slot_values = get_photo_slot_values(tour_key, tour)
+    lines = ["Тур:", tour_key, ""]
+    lines.extend(
+        f"{slot_name}: {'OK' if photo_value else 'MISSING'}"
+        for slot_name, photo_value in zip(PHOTO_SLOT_NAMES, photo_slot_values)
+    )
+    return "\n".join(lines)
+
+
+def generate_photo_audit():
+    active_tours = [
+        (tour_key, tour)
+        for tour_key, tour in TOUR_CATALOG.items()
+        if tour.get("status") == "active"
+    ]
+    if not active_tours:
+        return "Активных туров нет."
+
+    return "\n\n".join(
+        format_tour_photo_audit(tour_key, tour)
+        for tour_key, tour in active_tours
+    )
 
 
 def build_recommendations(active_tours, draft_tours, tours_without_photos, tours_without_price, lead_counts):
