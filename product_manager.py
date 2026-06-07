@@ -4,62 +4,17 @@ from openai import OpenAI
 
 from ai_manager import OPENAI_API_KEY, OPENAI_MODEL, SYSTEM_PROMPT
 from seasonal_manager import get_seasonal_system_prompt
+from tour_catalog import TOUR_CATALOG, format_tour_data, get_tour, normalize_tour_key
 
 
 logger = logging.getLogger(__name__)
 
-TOURS = {
-    "samet_1d": {
-        "name": "Остров Самет 1 день",
-        "details": """Остров Самет 1 день.
-Включено:
-трансфер от отеля в Паттайе и обратно,
-скоростной катер до острова и обратно,
-билет в национальный парк,
-лежаки и зонтики на пляже Ао Пай,
-легкий обед,
-сопровождение русского гида.
-Время в пути:
-около 1 часа на минивене и 15 минут на скоростном катере.""",
-    },
-    "samet_2d": {
-        "name": "Остров Самет 2 дня",
-        "details": """Остров Самет 2 дня.
-Включено:
-трансфер от отеля в Паттайе и обратно,
-скоростной катер до острова и обратно,
-билет в национальный парк,
-проживание в отелях на выбор:
-Silver Sand Hotel,
-Tok’s Little Hut,
-Sea Breeze.
-Указать, что формат подходит для спокойного отдыха с ночёвкой.""",
-    },
-    "samet_transfer": {
-        "name": "Трансфер на Самет",
-        "details": """Трансфер на Самет.
-Включено:
-трансфер от отеля в Паттайе и обратно,
-скоростной катер до острова Самет,
-билет в национальный парк.
-Указать, что программа подходит тем, кто едет на остров на несколько дней и хочет сам выбрать отель.""",
-    },
-    "chang": {"name": "Ко Чанг", "details": ""},
-    "bangkok": {"name": "Бангкок", "details": ""},
-    "nongnooch": {"name": "Нонг Нуч", "details": ""},
-    "khao_kheow": {"name": "Кхао Кхео", "details": ""},
-}
-
-AVAILABLE_TOUR_KEYS = ", ".join(TOURS.keys())
-
-
-def normalize_tour_key(tour_key):
-    return tour_key.replace("-", "_").lower()
+AVAILABLE_TOUR_KEYS = ", ".join(TOUR_CATALOG.keys())
 
 
 def generate_product_card(tour_key):
     normalized_tour_key = normalize_tour_key(tour_key)
-    tour = TOURS.get(normalized_tour_key)
+    tour = get_tour(normalized_tour_key)
     if not tour:
         logger.error("Unknown tour key: %s", tour_key)
         return None
@@ -69,8 +24,9 @@ def generate_product_card(tour_key):
         return None
 
     prompt = (
-        f"Сгенерируй карточку экскурсии для ВК: {tour['name']}.\n"
-        f"Данные тура:\n{tour['details'] or 'Используй знания Максима Орлова по этому направлению.'}\n\n"
+        f"Сгенерируй карточку экскурсии для ВК: {tour['title']}.\n"
+        "Используй только данные из каталога ниже. Не выдумывай цены, отели или условия.\n"
+        f"Данные тура:\n{format_tour_data(tour)}\n\n"
         "Строго используй структуру:\n"
         "заголовок\n"
         "эмоциональный крючок\n"

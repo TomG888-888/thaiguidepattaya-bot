@@ -1,9 +1,11 @@
 import logging
 import os
+import re
 
 from openai import OpenAI
 
 from seasonal_manager import get_seasonal_system_prompt
+from tour_catalog import get_samet_catalog_context
 
 
 logger = logging.getLogger(__name__)
@@ -18,6 +20,29 @@ SYSTEM_PROMPT = """Ты Максим Орлов, русскоязычный ги
 Пиши коротко, живым человеческим языком, без канцелярита."""
 
 
+def is_samet_question(user_message, history=None):
+    texts = [user_message]
+    if history:
+        texts.extend(message.get("content", "") for message in history)
+
+    combined_text = " ".join(texts).lower()
+    return bool(re.search(r"\b(самет|samet|samed|ко самет|koh samet)\b", combined_text))
+
+
+def add_catalog_context(messages):
+    return [
+        {
+            "role": "developer",
+            "content": (
+                "Если клиент спрашивает про Самет, используй данные каталога ниже "
+                "как источник правды и не выдумывай цены или условия.\n\n"
+                f"{get_samet_catalog_context()}"
+            ),
+        },
+        *messages,
+    ]
+
+
 def generate_reply(user_message, history=None):
     if not OPENAI_API_KEY:
         logger.error("OPENAI_API_KEY is not configured")
@@ -26,6 +51,9 @@ def generate_reply(user_message, history=None):
     try:
         client = OpenAI(api_key=OPENAI_API_KEY)
         messages = history or [{"role": "user", "content": user_message}]
+        if is_samet_question(user_message, history=history):
+            messages = add_catalog_context(messages)
+
         response = client.responses.create(
             model=OPENAI_MODEL,
             instructions=get_seasonal_system_prompt(SYSTEM_PROMPT),
