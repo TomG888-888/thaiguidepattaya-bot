@@ -204,13 +204,13 @@ def handle_admin_command(peer_id, text):
     booked_peer_id = parse_status_command(text, "/booked")
     if booked_peer_id is not None:
         if update_lead_status(booked_peer_id, "booked"):
-            return f"Лид {booked_peer_id} переведен в booked."
+            return f"Лид {booked_peer_id} переведен в booked"
         return f"Лид {booked_peer_id} не найден."
 
     lost_peer_id = parse_status_command(text, "/lost")
     if lost_peer_id is not None:
         if update_lead_status(lost_peer_id, "lost"):
-            return f"Лид {lost_peer_id} переведен в lost."
+            return f"Лид {lost_peer_id} переведен в lost"
         return f"Лид {lost_peer_id} не найден."
 
     return "Неверный формат команды."
