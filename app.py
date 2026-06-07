@@ -3,9 +3,15 @@ import os
 from pathlib import Path
 import random
 import re
+import base64
+import hashlib
+import html
+import secrets
+import time
+from urllib.parse import urlencode
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from flask import Flask, Response, jsonify, request
+from flask import Flask, Response, jsonify, redirect, request
 import requests
 
 from ai_manager import generate_reply
@@ -39,10 +45,16 @@ VK_TOKEN = os.getenv("VK_TOKEN")
 USER_VK_TOKEN = os.getenv("USER_VK_TOKEN")
 VK_GROUP_ID = os.getenv("VK_GROUP_ID")
 VK_MARKET_CATEGORY_ID = os.getenv("VK_MARKET_CATEGORY_ID", "1")
+VK_APP_ID = os.getenv("VK_APP_ID")
+VK_REDIRECT_URI = os.getenv("VK_REDIRECT_URI")
+PUBLIC_BACKEND_URL = os.getenv("PUBLIC_BACKEND_URL")
 ADMIN_ID = os.getenv("ADMIN_ID")
 AUTO_POSTING_ENABLED = os.getenv("AUTO_POSTING_ENABLED", "false").lower() == "true"
 VK_CONFIRMATION_RESPONSE = "dfe8da6d"
 VK_API_VERSION = "5.199"
+VK_AUTH_SCOPE = "market photos groups wall offline"
+PKCE_STATE_TTL_SECONDS = 600
+PKCE_STATES = {}
 AUTO_REPLY_TEXT = """Привет!
 Максим на связи.
 
@@ -73,6 +85,7 @@ ADMIN_HELP_TEXT = """Доступные команды:
 /product_export_all
 /product_export_drafts
 /product_photos <tour_key>
+/vk_auth_link
 /vk_market_test
 /publish expert
 /publish sales
@@ -95,6 +108,8 @@ market, photos, groups, wall, offline
 
 3. В Railway откройте Variables и добавьте:
 USER_VK_TOKEN=ваш_токен
+
+Для временной авторизации через VK ID используйте команду /vk_auth_link.
 
 Подробная инструкция: docs/vk_user_token.md"""
 
@@ -128,6 +143,72 @@ def format_leads():
 
 def is_admin(peer_id):
     return bool(ADMIN_ID) and str(peer_id) == ADMIN_ID
+
+
+def cleanup_pkce_states():
+    now = time.time()
+    expired_states = [
+        state
+        for state, data in PKCE_STATES.items()
+        if now - data["created_at"] > PKCE_STATE_TTL_SECONDS
+    ]
+    for state in expired_states:
+        PKCE_STATES.pop(state, None)
+
+
+def create_code_challenge(code_verifier):
+    digest = hashlib.sha256(code_verifier.encode("ascii")).digest()
+    return base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
+
+
+def get_vk_auth_link():
+    if not PUBLIC_BACKEND_URL:
+        return "PUBLIC_BACKEND_URL не настроен в ENV."
+
+    backend_url = PUBLIC_BACKEND_URL.rstrip("/")
+    return f"{backend_url}/vk/auth-start"
+
+
+def render_token_page(access_token):
+    escaped_token = html.escape(access_token)
+    return Response(
+        f"""<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>USER_VK_TOKEN получен</title>
+  <style>
+    body {{
+      font-family: Arial, sans-serif;
+      margin: 40px;
+      line-height: 1.5;
+      color: #222;
+    }}
+    textarea {{
+      width: 100%;
+      max-width: 960px;
+      min-height: 180px;
+      font-family: monospace;
+      font-size: 14px;
+    }}
+  </style>
+</head>
+<body>
+  <h1>USER_VK_TOKEN получен</h1>
+  <p>Скопируйте access_token в Railway Variables.</p>
+  <textarea readonly>{escaped_token}</textarea>
+</body>
+</html>""",
+        mimetype="text/html",
+    )
+
+
+def render_oauth_error(message):
+    return Response(
+        f"Ошибка VK OAuth: {html.escape(message)}",
+        status=400,
+        mimetype="text/plain",
+    )
 
 
 def parse_status_command(text, command):
@@ -683,6 +764,7 @@ def handle_admin_command(peer_id, text):
             "/product",
             "/publish",
             "/vk_market_test",
+            "/vk_auth_link",
             "/token_help",
             "/season",
             "/stage",
@@ -701,6 +783,9 @@ def handle_admin_command(peer_id, text):
 
     if text == "/token_help":
         return TOKEN_HELP_TEXT
+
+    if text == "/vk_auth_link":
+        return get_vk_auth_link()
 
     if text == "/admin_audit":
         return generate_admin_audit()
@@ -958,6 +1043,103 @@ def index():
     )
 
 
+@app.route("/vk/auth-start")
+def vk_auth_start():
+    if not VK_APP_ID:
+        return render_oauth_error("VK_APP_ID не настроен в ENV.")
+
+    if not VK_REDIRECT_URI:
+        return render_oauth_error("VK_REDIRECT_URI не настроен в ENV.")
+
+    cleanup_pkce_states()
+
+    code_verifier = secrets.token_urlsafe(64)
+    code_challenge = create_code_challenge(code_verifier)
+    state = secrets.token_urlsafe(32)
+    PKCE_STATES[state] = {
+        "code_verifier": code_verifier,
+        "created_at": time.time(),
+    }
+
+    params = {
+        "response_type": "code",
+        "client_id": VK_APP_ID,
+        "redirect_uri": VK_REDIRECT_URI,
+        "scope": VK_AUTH_SCOPE,
+        "state": state,
+        "code_challenge": code_challenge,
+        "code_challenge_method": "S256",
+    }
+    auth_url = f"https://id.vk.ru/authorize?{urlencode(params)}"
+    app.logger.info("VK OAuth PKCE auth started")
+    return redirect(auth_url)
+
+
+@app.route("/vk/callback")
+def vk_auth_callback():
+    code = request.args.get("code")
+    state = request.args.get("state")
+    device_id = request.args.get("device_id")
+
+    if not code:
+        return render_oauth_error("VK не вернул code.")
+
+    if not state:
+        return render_oauth_error("VK не вернул state.")
+
+    cleanup_pkce_states()
+    state_data = PKCE_STATES.pop(state, None)
+    if not state_data:
+        return render_oauth_error("state не найден или истек. Запустите авторизацию заново.")
+
+    if not VK_APP_ID:
+        return render_oauth_error("VK_APP_ID не настроен в ENV.")
+
+    if not VK_REDIRECT_URI:
+        return render_oauth_error("VK_REDIRECT_URI не настроен в ENV.")
+
+    data = {
+        "grant_type": "authorization_code",
+        "code": code,
+        "client_id": VK_APP_ID,
+        "redirect_uri": VK_REDIRECT_URI,
+        "code_verifier": state_data["code_verifier"],
+    }
+    if device_id:
+        data["device_id"] = device_id
+
+    try:
+        response = requests.post(
+            "https://id.vk.ru/oauth2/auth",
+            data=data,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            timeout=15,
+        )
+        response.raise_for_status()
+    except requests.RequestException as error:
+        app.logger.exception("VK OAuth token exchange request failed")
+        return render_oauth_error(str(error))
+
+    try:
+        result = response.json()
+    except ValueError:
+        app.logger.error("VK OAuth token exchange returned non-JSON response")
+        return render_oauth_error("VK вернул не-JSON ответ при обмене code.")
+
+    if "error" in result:
+        error_text = result.get("error_description") or result.get("error") or "unknown_error"
+        app.logger.error("VK OAuth token exchange error: %s", error_text)
+        return render_oauth_error(error_text)
+
+    access_token = result.get("access_token")
+    if not access_token:
+        app.logger.error("VK OAuth token exchange response without access_token")
+        return render_oauth_error("VK не вернул access_token.")
+
+    app.logger.info("VK OAuth USER_VK_TOKEN received successfully")
+    return render_token_page(access_token)
+
+
 @app.route("/vk", methods=["POST"])
 def vk_callback():
     payload = request.get_json(silent=True) or {}
@@ -991,7 +1173,15 @@ def vk_callback():
                 reply_peer_id = (
                     sender_id
                     if text.strip().startswith(
-                        ("/post", "/product", "/publish", "/create_product", "/photo", "/vk_market_test")
+                        (
+                            "/post",
+                            "/product",
+                            "/publish",
+                            "/create_product",
+                            "/photo",
+                            "/vk_market_test",
+                            "/vk_auth_link",
+                        )
                     )
                     else peer_id
                 )
