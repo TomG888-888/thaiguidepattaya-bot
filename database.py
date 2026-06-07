@@ -6,6 +6,7 @@ from contextlib import closing
 DATABASE_URL = os.getenv("DATABASE_URL")
 DATABASE_PATH = os.getenv("DATABASE_PATH", "bot.db")
 LEAD_STATUSES = ("new", "active", "booked", "lost")
+LEAD_STAGES = ("new", "qualified", "offer_sent", "booked", "lost")
 
 
 def is_postgres():
@@ -59,8 +60,17 @@ def init_postgres_db():
                     name TEXT,
                     first_contact TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
                     status TEXT NOT NULL DEFAULT 'new'
-                        CHECK (status IN ('new', 'active', 'booked', 'lost'))
+                        CHECK (status IN ('new', 'active', 'booked', 'lost')),
+                    stage TEXT NOT NULL DEFAULT 'new'
+                        CHECK (stage IN ('new', 'qualified', 'offer_sent', 'booked', 'lost'))
                 )
+                """
+            )
+            cursor.execute(
+                """
+                ALTER TABLE leads
+                ADD COLUMN IF NOT EXISTS stage TEXT NOT NULL DEFAULT 'new'
+                    CHECK (stage IN ('new', 'qualified', 'offer_sent', 'booked', 'lost'))
                 """
             )
         connection.commit()
@@ -92,10 +102,22 @@ def init_sqlite_db():
                 name TEXT,
                 first_contact TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 status TEXT NOT NULL DEFAULT 'new'
-                    CHECK (status IN ('new', 'active', 'booked', 'lost'))
+                    CHECK (status IN ('new', 'active', 'booked', 'lost')),
+                stage TEXT NOT NULL DEFAULT 'new'
+                    CHECK (stage IN ('new', 'qualified', 'offer_sent', 'booked', 'lost'))
             )
             """
         )
+        cursor = connection.execute("PRAGMA table_info(leads)")
+        columns = {row[1] for row in cursor.fetchall()}
+        if "stage" not in columns:
+            connection.execute(
+                """
+                ALTER TABLE leads
+                ADD COLUMN stage TEXT NOT NULL DEFAULT 'new'
+                    CHECK (stage IN ('new', 'qualified', 'offer_sent', 'booked', 'lost'))
+                """
+            )
         connection.commit()
 
 
@@ -180,8 +202,8 @@ def create_lead(peer_id, name=None):
         if is_postgres():
             cursor.execute(
                 """
-                INSERT INTO leads (peer_id, name, status)
-                VALUES (%s, %s, 'new')
+                INSERT INTO leads (peer_id, name, status, stage)
+                VALUES (%s, %s, 'new', 'new')
                 ON CONFLICT (peer_id) DO NOTHING
                 """,
                 (peer_id, name),
@@ -189,8 +211,8 @@ def create_lead(peer_id, name=None):
         else:
             cursor.execute(
                 f"""
-                INSERT OR IGNORE INTO leads (peer_id, name, status)
-                VALUES ({param}, {param}, 'new')
+                INSERT OR IGNORE INTO leads (peer_id, name, status, stage)
+                VALUES ({param}, {param}, 'new', 'new')
                 """,
                 (peer_id, name),
             )
@@ -203,12 +225,12 @@ def get_lead_status_counts():
         cursor = connection.cursor()
         cursor.execute(
             """
-            SELECT status, COUNT(*)
+            SELECT stage, COUNT(*)
             FROM leads
-            GROUP BY status
+            GROUP BY stage
             """
         )
-        counts = {status: 0 for status in LEAD_STATUSES}
+        counts = {stage: 0 for stage in LEAD_STAGES}
         counts.update(dict(cursor.fetchall()))
         cursor.close()
 
@@ -220,7 +242,7 @@ def get_leads():
         cursor = connection.cursor()
         cursor.execute(
             """
-            SELECT peer_id, first_contact, status
+            SELECT peer_id, first_contact, stage
             FROM leads
             ORDER BY first_contact DESC
             """
@@ -229,9 +251,9 @@ def get_leads():
             {
                 "peer_id": peer_id,
                 "first_contact": str(first_contact),
-                "status": status,
+                "status": stage,
             }
-            for peer_id, first_contact, status in cursor.fetchall()
+            for peer_id, first_contact, stage in cursor.fetchall()
         ]
         cursor.close()
 
@@ -243,16 +265,41 @@ def update_lead_status(peer_id, status):
         return False
 
     param = placeholder()
+    stage = status if status in LEAD_STAGES else "new"
 
     with closing(get_connection()) as connection:
         cursor = connection.cursor()
         cursor.execute(
             f"""
             UPDATE leads
-            SET status = {param}
+            SET status = {param}, stage = {param}
             WHERE peer_id = {param}
             """,
-            (status, peer_id),
+            (status, stage, peer_id),
+        )
+        connection.commit()
+        updated = cursor.rowcount > 0
+        cursor.close()
+
+        return updated
+
+
+def update_lead_stage(peer_id, stage):
+    if stage not in LEAD_STAGES:
+        return False
+
+    param = placeholder()
+
+    with closing(get_connection()) as connection:
+        cursor = connection.cursor()
+        cursor.execute(
+            f"""
+            UPDATE leads
+            SET stage = {param}
+            WHERE peer_id = {param}
+              AND stage NOT IN ('booked', 'lost')
+            """,
+            (stage, peer_id),
         )
         connection.commit()
         updated = cursor.rowcount > 0

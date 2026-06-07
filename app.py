@@ -1,6 +1,7 @@
 import logging
 import os
 import random
+import re
 
 from flask import Flask, Response, jsonify, request
 import requests
@@ -14,6 +15,7 @@ from database import (
     get_message_count,
     get_recent_messages,
     init_db,
+    update_lead_stage,
     update_lead_status,
 )
 
@@ -52,9 +54,10 @@ ADMIN_HELP_TEXT = """Доступные команды:
 def format_lead_stats():
     counts = get_lead_status_counts()
     return (
-        "Лиды по статусам:\n"
+        "Лиды по стадиям:\n"
         f"new: {counts['new']}\n"
-        f"active: {counts['active']}\n"
+        f"qualified: {counts['qualified']}\n"
+        f"offer_sent: {counts['offer_sent']}\n"
         f"booked: {counts['booked']}\n"
         f"lost: {counts['lost']}"
     )
@@ -88,6 +91,54 @@ def parse_status_command(text, command):
         return int(parts[1])
     except ValueError:
         return None
+
+
+def has_people_count(text):
+    normalized_text = text.lower()
+    if re.search(r"\b\d+\s*(человек|чел|персон|гост|турист)", normalized_text):
+        return True
+
+    return bool(
+        re.search(
+            r"\b(один|одна|двое|два|трое|три|четверо|четыре|пятеро|пять|шестеро|шесть)\b",
+            normalized_text,
+        )
+    )
+
+
+def has_travel_dates(text):
+    normalized_text = text.lower()
+    month_names = (
+        "январ",
+        "феврал",
+        "март",
+        "апрел",
+        "май",
+        "июн",
+        "июл",
+        "август",
+        "сентябр",
+        "октябр",
+        "ноябр",
+        "декабр",
+    )
+
+    if re.search(r"\b\d{1,2}[./-]\d{1,2}(?:[./-]\d{2,4})?\b", normalized_text):
+        return True
+
+    if re.search(r"\b\d{1,2}\s*[-–]\s*\d{1,2}\b", normalized_text) and any(
+        month in normalized_text for month in month_names
+    ):
+        return True
+
+    return bool(
+        re.search(r"\b\d{1,2}\s+", normalized_text)
+        and any(month in normalized_text for month in month_names)
+    )
+
+
+def is_qualified_message(text):
+    return has_people_count(text) and has_travel_dates(text)
 
 
 def handle_admin_command(peer_id, text):
@@ -195,6 +246,9 @@ def vk_callback():
                 if send_vk_message(peer_id, AUTO_REPLY_TEXT):
                     add_message(peer_id, "assistant", AUTO_REPLY_TEXT)
             else:
+                if is_qualified_message(text):
+                    update_lead_stage(peer_id, "qualified")
+
                 history = get_recent_messages(peer_id, limit=20)
                 reply = generate_reply(text, history=history)
                 if reply:
