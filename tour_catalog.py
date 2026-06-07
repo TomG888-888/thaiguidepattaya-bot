@@ -552,6 +552,37 @@ for tour_key, required_photos in PHOTO_REQUIREMENTS.items():
     TOUR_CATALOG[tour_key]["photos"]["required"] = required_photos
 
 
+PHOTO_READY_TOURS = (
+    "samet_1d_lunch",
+    "samet_1d_no_lunch",
+    "samet_1d_fireshow",
+    "samet_2d_seabreeze",
+    "samet_2d_silver_sand",
+    "samet_2d_silver_sand_full",
+    "samet_2d_toks",
+    "samet_2d_samed_villa",
+    "samet_2d_samed_pavilion",
+    "samet_transfer",
+    "tropical_cruise_9_islands",
+)
+
+
+def get_static_tour_photos(tour_key):
+    return {
+        "cover": f"/static/tours/{tour_key}/cover.jpg",
+        "gallery": [
+            f"/static/tours/{tour_key}/gallery_1.jpg",
+            f"/static/tours/{tour_key}/gallery_2.jpg",
+            f"/static/tours/{tour_key}/gallery_3.jpg",
+            f"/static/tours/{tour_key}/gallery_4.jpg",
+        ],
+    }
+
+
+for tour_key in PHOTO_READY_TOURS:
+    TOUR_CATALOG[tour_key]["photos"].update(get_static_tour_photos(tour_key))
+
+
 def normalize_tour_key(tour_key):
     return tour_key.replace("-", "_").lower()
 
