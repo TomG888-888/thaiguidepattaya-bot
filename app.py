@@ -40,6 +40,13 @@ AUTO_REPLY_TEXT = """Привет!
 - море
 
 Подберу лучший вариант за 2 минуты."""
+ADMIN_HELP_TEXT = """Доступные команды:
+
+/help
+/stats
+/leads
+/booked <peer_id>
+/lost <peer_id>"""
 
 
 def format_lead_stats():
@@ -84,12 +91,15 @@ def parse_status_command(text, command):
 
 
 def handle_admin_command(peer_id, text):
-    if not text.startswith(("/stats", "/leads", "/booked", "/lost")):
+    if not text.startswith(("/help", "/stats", "/leads", "/booked", "/lost")):
         return None
 
     if not is_admin(peer_id):
         app.logger.warning("Unauthorized admin command from peer_id=%s: %s", peer_id, text)
         return "Команда доступна только администратору."
+
+    if text == "/help":
+        return ADMIN_HELP_TEXT
 
     if text == "/stats":
         return format_lead_stats()
@@ -177,26 +187,21 @@ def vk_callback():
 
             add_message(peer_id, "user", text)
 
-            if text.strip() == "/myid":
-                reply = f"Ваш VK ID: {sender_id}"
-                if send_vk_message(peer_id, reply):
-                    add_message(peer_id, "assistant", reply)
+            admin_reply = handle_admin_command(sender_id, text.strip())
+            if admin_reply:
+                if send_vk_message(peer_id, admin_reply):
+                    add_message(peer_id, "assistant", admin_reply)
+            elif is_first_message:
+                if send_vk_message(peer_id, AUTO_REPLY_TEXT):
+                    add_message(peer_id, "assistant", AUTO_REPLY_TEXT)
             else:
-                admin_reply = handle_admin_command(sender_id, text.strip())
-                if admin_reply:
-                    if send_vk_message(peer_id, admin_reply):
-                        add_message(peer_id, "assistant", admin_reply)
-                elif is_first_message:
-                    if send_vk_message(peer_id, AUTO_REPLY_TEXT):
-                        add_message(peer_id, "assistant", AUTO_REPLY_TEXT)
+                history = get_recent_messages(peer_id, limit=20)
+                reply = generate_reply(text, history=history)
+                if reply:
+                    if send_vk_message(peer_id, reply):
+                        add_message(peer_id, "assistant", reply)
                 else:
-                    history = get_recent_messages(peer_id, limit=20)
-                    reply = generate_reply(text, history=history)
-                    if reply:
-                        if send_vk_message(peer_id, reply):
-                            add_message(peer_id, "assistant", reply)
-                    else:
-                        app.logger.error("No GPT reply generated for peer_id=%s", peer_id)
+                    app.logger.error("No GPT reply generated for peer_id=%s", peer_id)
         else:
             app.logger.warning("VK message_new without peer_id: %s", payload)
 
