@@ -57,11 +57,11 @@ def get_missing_photo_requirements(tour):
     if not photos.get("gallery"):
         missing_photos.append("фото для галереи")
 
-    if tour.get("hotels") and not photos.get("hotel"):
-        missing_photos.append("фото отеля")
+    if not photos.get("source"):
+        missing_photos.append("источник фото")
 
-    if tour.get("route") and not photos.get("route"):
-        missing_photos.append("фото маршрута")
+    if not photos.get("license"):
+        missing_photos.append("лицензия фото")
 
     return missing_photos
 

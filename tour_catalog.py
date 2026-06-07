@@ -23,8 +23,8 @@ PUBLIC_TOUR_FIELDS = (
 DEFAULT_PHOTOS = {
     "main": "",
     "gallery": [],
-    "hotel": [],
-    "route": [],
+    "source": "",
+    "license": "",
 }
 
 
@@ -32,8 +32,8 @@ def make_photos(photos=None):
     tour_photos = {
         "main": DEFAULT_PHOTOS["main"],
         "gallery": list(DEFAULT_PHOTOS["gallery"]),
-        "hotel": list(DEFAULT_PHOTOS["hotel"]),
-        "route": list(DEFAULT_PHOTOS["route"]),
+        "source": DEFAULT_PHOTOS["source"],
+        "license": DEFAULT_PHOTOS["license"],
     }
     if photos:
         tour_photos.update(photos)
