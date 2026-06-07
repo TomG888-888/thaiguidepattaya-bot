@@ -55,6 +55,10 @@ VK_API_VERSION = "5.199"
 VK_AUTH_SCOPE = "market photos groups wall offline"
 PKCE_STATE_TTL_SECONDS = 600
 PKCE_STATES = {}
+CREATE_PRODUCT_DISABLED_MESSAGE = (
+    "Автоматическое создание товаров через VK API сейчас недоступно: "
+    "VK требует user token с market/photos, а новое VK ID приложение такие права не выдаёт."
+)
 AUTO_REPLY_TEXT = """Привет!
 Максим на связи.
 
@@ -913,7 +917,7 @@ def handle_admin_command(peer_id, text):
         parts = text.split()
         if len(parts) != 2:
             return "Неверный формат команды. Используйте /create_product samet_2d_silver_sand."
-        return create_vk_market_product(parts[1])
+        return CREATE_PRODUCT_DISABLED_MESSAGE
 
     if text == "/vk_market_test":
         return test_vk_market_access()
