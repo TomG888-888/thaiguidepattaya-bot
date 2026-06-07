@@ -86,6 +86,7 @@ ADMIN_HELP_TEXT = """Доступные команды:
 /product_export_drafts
 /product_photos <tour_key>
 /vk_auth_link
+/vk_token_debug
 /vk_market_test
 /publish expert
 /publish sales
@@ -167,6 +168,22 @@ def get_vk_auth_link():
 
     backend_url = PUBLIC_BACKEND_URL.rstrip("/")
     return f"{backend_url}/vk/auth-start"
+
+
+def get_vk_auth_debug_url():
+    if not VK_APP_ID or not VK_REDIRECT_URI:
+        return "VK_APP_ID или VK_REDIRECT_URI не настроены."
+
+    params = {
+        "response_type": "code",
+        "client_id": VK_APP_ID,
+        "redirect_uri": VK_REDIRECT_URI,
+        "scope": VK_AUTH_SCOPE,
+        "state": "<generated_state>",
+        "code_challenge": "<generated_s256_code_challenge>",
+        "code_challenge_method": "S256",
+    }
+    return f"https://id.vk.ru/authorize?{urlencode(params)}"
 
 
 def render_token_page(access_token):
@@ -472,6 +489,65 @@ def call_vk_api(method, token, params=None):
     return result.get("response")
 
 
+def sanitize_token_debug_text(value):
+    text = str(value)
+    if USER_VK_TOKEN:
+        text = text.replace(USER_VK_TOKEN, "[hidden_token]")
+    return re.sub(r"('access_token',\s*')[^']+", r"\1[hidden_token]", text)
+
+
+def call_vk_api_for_debug(method):
+    try:
+        response = requests.post(
+            f"https://api.vk.com/method/{method}",
+            data={
+                "access_token": USER_VK_TOKEN,
+                "v": VK_API_VERSION,
+            },
+            timeout=15,
+        )
+        response.raise_for_status()
+        result = response.json()
+    except requests.RequestException as error:
+        return f"ERROR: {sanitize_token_debug_text(error)}"
+    except ValueError:
+        return "ERROR: non-JSON response"
+
+    if "error" in result:
+        return f"ERROR: {sanitize_token_debug_text(result['error'])}"
+
+    return sanitize_token_debug_text(result.get("response"))
+
+
+def format_vk_token_debug():
+    if not USER_VK_TOKEN:
+        return "USER_VK_TOKEN не настроен."
+
+    users_result = call_vk_api_for_debug("users.get")
+    profile_result = call_vk_api_for_debug("account.getProfileInfo")
+    combined_errors = f"{users_result}\n{profile_result}".lower()
+
+    if "anonymous" in combined_errors:
+        scope_status = "VK вернул ошибку anonymous token. Вероятно, токен не пользовательский или без нужных прав."
+    elif "access_token" in combined_errors or "permission" in combined_errors:
+        scope_status = "VK вернул ошибку доступа. Проверьте тип токена и scope: market, photos, groups, wall."
+    else:
+        scope_status = "Явной ошибки anonymous token не найдено."
+
+    return (
+        "VK token debug:\n"
+        f"token prefix: {USER_VK_TOKEN[:8]}\n"
+        f"token length: {len(USER_VK_TOKEN)}\n\n"
+        f"users.get:\n{users_result}\n\n"
+        f"account.getProfileInfo:\n{profile_result}\n\n"
+        f"scopes/anonymous:\n{scope_status}\n\n"
+        "auth-start URL:\n"
+        f"{get_vk_auth_debug_url()}\n\n"
+        f"scope: {VK_AUTH_SCOPE}\n"
+        f"redirect_uri: {VK_REDIRECT_URI or '<NOT SET>'}"
+    )
+
+
 def upload_market_photo(photo_path, group_id, main_photo):
     upload_server = call_vk_api(
         "photos.getMarketUploadServer",
@@ -765,6 +841,7 @@ def handle_admin_command(peer_id, text):
             "/publish",
             "/vk_market_test",
             "/vk_auth_link",
+            "/vk_token_debug",
             "/token_help",
             "/season",
             "/stage",
@@ -786,6 +863,9 @@ def handle_admin_command(peer_id, text):
 
     if text == "/vk_auth_link":
         return get_vk_auth_link()
+
+    if text == "/vk_token_debug":
+        return format_vk_token_debug()
 
     if text == "/admin_audit":
         return generate_admin_audit()
@@ -1131,6 +1211,7 @@ def vk_callback():
                             "/photo",
                             "/vk_market_test",
                             "/vk_auth_link",
+                            "/vk_token_debug",
                         )
                     )
                     else peer_id
