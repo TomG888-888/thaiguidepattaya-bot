@@ -313,6 +313,14 @@ def format_product_export(tour_key):
     )
 
 
+def safe_format_product_export(tour_key):
+    try:
+        return format_product_export(tour_key)
+    except Exception as error:
+        app.logger.exception("product_export failed for tour_key=%s", tour_key)
+        return f"Ошибка product_export: {error}"
+
+
 def split_export_messages(exports, max_length=3500):
     messages = []
     current_message = ""
@@ -500,7 +508,7 @@ def handle_admin_command(peer_id, text):
         parts = text.split()
         if len(parts) != 2:
             return "Неверный формат команды. Используйте /product_export samet_1d_lunch."
-        return format_product_export(parts[1])
+        return safe_format_product_export(parts[1])
 
     if text.startswith("/product_photos"):
         parts = text.split()
@@ -568,6 +576,7 @@ def send_vk_message(peer_id, message):
         return False
 
     try:
+        app.logger.info("VK messages.send started: peer_id=%s, length=%s", peer_id, len(message))
         response = requests.post(
             "https://api.vk.com/method/messages.send",
             data={
@@ -584,11 +593,17 @@ def send_vk_message(peer_id, message):
         app.logger.exception("VK messages.send request failed")
         return False
 
-    result = response.json()
+    try:
+        result = response.json()
+    except ValueError:
+        app.logger.exception("VK messages.send returned non-JSON response: %s", response.text)
+        return False
+
     if "error" in result:
         app.logger.error("VK messages.send error: %s", result["error"])
         return False
 
+    app.logger.info("VK messages.send success: peer_id=%s, response=%s", peer_id, result.get("response"))
     return True
 
 
