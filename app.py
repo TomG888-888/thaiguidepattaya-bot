@@ -228,6 +228,14 @@ def format_product_price(tour):
     return format_optional_price(tour.get("price_adult") or tour.get("price_from"))
 
 
+def format_required_photos(tour):
+    required_photos = (tour.get("photos") or {}).get("required") or []
+    if not required_photos:
+        return "нет"
+
+    return "\n".join(f"- {item}" for item in required_photos)
+
+
 def format_product_export(tour_key):
     normalized_tour_key = normalize_tour_key(tour_key)
     tour = get_public_tour(normalized_tour_key)
@@ -237,8 +245,9 @@ def format_product_export(tour_key):
     return (
         f"Товар: {normalized_tour_key}\n\n"
         f"Название товара:\n{tour['title']}\n\n"
+        f"Описание товара:\n{format_product_export_description(tour)}\n\n"
         f"Цена:\n{format_product_price(tour)}\n\n"
-        f"Описание товара:\n{format_product_export_description(tour)}"
+        f"Required-фото для карточки:\n{format_required_photos(tour)}"
     )
 
 

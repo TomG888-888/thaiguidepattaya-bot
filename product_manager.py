@@ -49,20 +49,16 @@ def add_route_before_included(card_text, tour):
 
 def get_missing_photo_requirements(tour):
     photos = tour.get("photos") or {}
-    missing_photos = []
+    required_photos = photos.get("required") or []
 
+    if required_photos and (not photos.get("main") or not photos.get("gallery")):
+        return required_photos
+
+    missing_photos = []
     if not photos.get("main"):
         missing_photos.append("главное фото тура")
-
     if not photos.get("gallery"):
         missing_photos.append("фото для галереи")
-
-    if not photos.get("source"):
-        missing_photos.append("источник фото")
-
-    if not photos.get("license"):
-        missing_photos.append("лицензия фото")
-
     return missing_photos
 
 

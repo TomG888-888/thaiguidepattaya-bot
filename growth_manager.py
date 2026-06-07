@@ -15,6 +15,23 @@ def is_missing_photos(tour):
     return not photos.get("main") or not photos.get("gallery")
 
 
+def get_missing_photo_requirements(tour):
+    if not is_missing_photos(tour):
+        return []
+
+    photos = tour.get("photos") or {}
+    required_photos = photos.get("required") or []
+    if required_photos:
+        return required_photos
+
+    missing_photos = []
+    if not photos.get("main"):
+        missing_photos.append("главное фото тура")
+    if not photos.get("gallery"):
+        missing_photos.append("фото для галереи")
+    return missing_photos
+
+
 def is_missing_price(tour):
     return not (tour.get("price_adult") or tour.get("price_from"))
 
@@ -24,6 +41,17 @@ def format_key_list(title, keys):
         return f"{title}\nнет"
 
     return "\n".join([title, *[f"- {key}" for key in keys]])
+
+
+def format_missing_photos(tours_without_photos):
+    if not tours_without_photos:
+        return "Туры без фото:\nнет"
+
+    lines = ["Туры без фото:"]
+    for tour_key, missing_photos in tours_without_photos.items():
+        lines.append(f"- {tour_key}:")
+        lines.extend(f"  - {photo}" for photo in missing_photos)
+    return "\n".join(lines)
 
 
 def format_lead_stage_counts():
@@ -64,11 +92,11 @@ def build_recommendations(active_tours, draft_tours, tours_without_photos, tours
 def generate_admin_audit():
     active_tours = get_tour_keys_by_status("active")
     draft_tours = get_tour_keys_by_status("draft")
-    tours_without_photos = [
-        tour_key
+    tours_without_photos = {
+        tour_key: get_missing_photo_requirements(tour)
         for tour_key, tour in TOUR_CATALOG.items()
-        if tour.get("status") == "active" and is_missing_photos(tour)
-    ]
+        if tour.get("status") == "active" and get_missing_photo_requirements(tour)
+    }
     tours_without_price = [
         tour_key
         for tour_key, tour in TOUR_CATALOG.items()
@@ -87,7 +115,7 @@ def generate_admin_audit():
         [
             format_key_list("Активные туры:", active_tours),
             format_key_list("Draft-туры:", draft_tours),
-            format_key_list("Туры без фото:", tours_without_photos),
+            format_missing_photos(tours_without_photos),
             format_key_list("Туры без цены:", tours_without_price),
             format_lead_stage_counts(),
             "\n".join(["Что исправить:", *[f"- {item}" for item in recommendations]]),
