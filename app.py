@@ -7,6 +7,7 @@ from flask import Flask, Response, jsonify, request
 import requests
 
 from ai_manager import generate_reply
+from content_manager import generate_expert_post, generate_sales_post, generate_story_post
 from database import (
     add_message,
     create_lead,
@@ -48,6 +49,9 @@ ADMIN_HELP_TEXT = """Доступные команды:
 /help
 /stats
 /leads
+/post expert
+/post sales
+/post story
 /stage <peer_id> <stage>
 /booked <peer_id>
 /lost <peer_id>"""
@@ -106,6 +110,23 @@ def parse_stage_command(text):
         return None
 
     return peer_id, parts[2]
+
+
+def generate_admin_post(post_type):
+    generators = {
+        "expert": generate_expert_post,
+        "sales": generate_sales_post,
+        "story": generate_story_post,
+    }
+    generator = generators.get(post_type)
+    if not generator:
+        return "Неверный тип поста. Используйте: expert, sales или story."
+
+    post = generator()
+    if not post:
+        return "Не удалось сгенерировать пост."
+
+    return post
 
 
 def has_people_count(text):
@@ -178,7 +199,7 @@ def is_tour_offer(text):
 
 
 def handle_admin_command(peer_id, text):
-    if not text.startswith(("/help", "/stats", "/leads", "/stage", "/booked", "/lost")):
+    if not text.startswith(("/help", "/stats", "/leads", "/post", "/stage", "/booked", "/lost")):
         return None
 
     if not is_admin(peer_id):
@@ -193,6 +214,12 @@ def handle_admin_command(peer_id, text):
 
     if text == "/leads":
         return format_leads()
+
+    if text.startswith("/post"):
+        parts = text.split()
+        if len(parts) != 2:
+            return "Неверный формат команды. Используйте /post expert, /post sales или /post story."
+        return generate_admin_post(parts[1])
 
     stage_command = parse_stage_command(text)
     if stage_command is not None:
@@ -283,7 +310,8 @@ def vk_callback():
 
             admin_reply = handle_admin_command(sender_id, text.strip())
             if admin_reply:
-                if send_vk_message(peer_id, admin_reply):
+                reply_peer_id = sender_id if text.strip().startswith("/post") else peer_id
+                if send_vk_message(reply_peer_id, admin_reply):
                     add_message(peer_id, "assistant", admin_reply)
             elif is_first_message:
                 if send_vk_message(peer_id, AUTO_REPLY_TEXT):
