@@ -20,7 +20,11 @@ SEASON_CONTEXTS = {
 
 
 def get_current_season():
-    current_season = (get_setting(SEASON_SETTING_KEY) or DEFAULT_SEASON).lower()
+    try:
+        current_season = (get_setting(SEASON_SETTING_KEY) or DEFAULT_SEASON).lower()
+    except Exception:
+        current_season = DEFAULT_SEASON
+
     if current_season in SEASON_CONTEXTS:
         return current_season
 

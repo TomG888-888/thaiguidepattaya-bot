@@ -22,6 +22,7 @@ from database import (
     update_lead_stage,
     update_lead_status,
 )
+from product_manager import generate_product_card
 from seasonal_manager import get_current_season, init_current_season, set_current_season
 
 
@@ -57,6 +58,7 @@ ADMIN_HELP_TEXT = """Доступные команды:
 /post expert
 /post sales
 /post story
+/product <tour_key>
 /publish expert
 /publish sales
 /publish story
@@ -148,6 +150,14 @@ def generate_admin_post(post_type):
         return "Не удалось сгенерировать пост."
 
     return post
+
+
+def generate_admin_product_card(tour_key):
+    product_card = generate_product_card(tour_key)
+    if not product_card:
+        return "Не удалось сгенерировать карточку. Используйте: samet, chang, bangkok, nongnooch, khao_kheow."
+
+    return product_card
 
 
 def publish_admin_post(post_type):
@@ -254,6 +264,7 @@ def handle_admin_command(peer_id, text):
             "/stats",
             "/leads",
             "/post",
+            "/product",
             "/publish",
             "/season",
             "/stage",
@@ -290,6 +301,12 @@ def handle_admin_command(peer_id, text):
         if len(parts) != 2:
             return "Неверный формат команды. Используйте /post expert, /post sales или /post story."
         return generate_admin_post(parts[1])
+
+    if text.startswith("/product"):
+        parts = text.split()
+        if len(parts) != 2:
+            return "Неверный формат команды. Используйте /product samet."
+        return generate_admin_product_card(parts[1])
 
     if text.startswith("/publish"):
         parts = text.split()
@@ -499,7 +516,7 @@ def vk_callback():
             if admin_reply:
                 reply_peer_id = (
                     sender_id
-                    if text.strip().startswith(("/post", "/publish"))
+                    if text.strip().startswith(("/post", "/product", "/publish"))
                     else peer_id
                 )
                 if send_vk_message(reply_peer_id, admin_reply):
