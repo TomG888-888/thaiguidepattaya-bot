@@ -1,8 +1,11 @@
 COMMON_PAYMENT_METHODS = ["наличные", "перевод"]
 COMMON_CANCELLATION_POLICY = "Условия отмены зависят от даты поездки и подтверждаются при бронировании."
 COMMON_TRAVEL_TIME = "около 1 часа на минивене и 15 минут на скоростном катере"
+LOW_SEASON_ACTIVE_NOTE = "В низкий сезон выезды по запросу. Актуальные даты уточняйте в сообщениях."
 PUBLIC_TOUR_FIELDS = (
     "title",
+    "category",
+    "status",
     "short_description",
     "full_description",
     "route",
@@ -15,6 +18,7 @@ PUBLIC_TOUR_FIELDS = (
     "hotels",
     "price_adult",
     "price_child",
+    "price_from",
     "payment_methods",
     "cancellation_policy",
     "what_to_bring",
@@ -45,6 +49,8 @@ def make_tour(
     short_description,
     full_description,
     included,
+    category="tour",
+    status="active",
     route=None,
     photos=None,
     not_included=None,
@@ -54,14 +60,20 @@ def make_tour(
     hotels=None,
     price_adult="по запросу",
     price_child="по запросу",
+    price_from=None,
     internal_net_price=None,
     payment_methods=None,
     cancellation_policy=COMMON_CANCELLATION_POLICY,
     what_to_bring=None,
     tags=None,
 ):
+    if status == "active" and LOW_SEASON_ACTIVE_NOTE not in full_description:
+        full_description = f"{full_description} {LOW_SEASON_ACTIVE_NOTE}"
+
     tour = {
         "title": title,
+        "category": category,
+        "status": status,
         "short_description": short_description,
         "full_description": full_description,
         "route": route or [],
@@ -74,6 +86,7 @@ def make_tour(
         "hotels": hotels or [],
         "price_adult": price_adult,
         "price_child": price_child,
+        "price_from": price_from if price_from is not None else price_adult,
         "payment_methods": payment_methods or COMMON_PAYMENT_METHODS,
         "cancellation_policy": cancellation_policy,
         "what_to_bring": what_to_bring
@@ -318,8 +331,81 @@ TOUR_CATALOG = {
         internal_net_price={"adult": 2000, "child": 1700},
         tags=["тропический круиз", "9 островов", "море", "острова", "паттайя"],
     ),
+    "transfer_bkk_airport_pattaya": make_tour(
+        title="Трансфер аэропорт Бангкока - Паттайя",
+        category="transfer",
+        short_description="Индивидуальный трансфер из аэропорта Бангкока в Паттайю.",
+        full_description=(
+            "Индивидуальный трансфер на легковом автомобиле. До 3 пассажиров с багажом "
+            "или до 4 пассажиров без крупного багажа. Маршрут и время согласуются индивидуально."
+        ),
+        included=[
+            "индивидуальный трансфер на легковом автомобиле",
+            "встреча в аэропорту Бангкока",
+            "поездка до адреса в Паттайе",
+            "согласование времени и маршрута",
+        ],
+        not_included=["платные парковки при длительном ожидании", "дополнительные остановки вне маршрута"],
+        duration="по маршруту",
+        travel_time="зависит от аэропорта, адреса и дорожной ситуации",
+        departure="по согласованию",
+        price_adult=None,
+        price_child=None,
+        price_from="по запросу",
+        what_to_bring=["номер рейса", "адрес в Паттайе", "контактный телефон", "информация о багаже"],
+        tags=["трансфер", "аэропорт", "бангкок", "паттайя", "индивидуальный трансфер"],
+    ),
+    "transfer_pattaya_bkk_airport": make_tour(
+        title="Трансфер Паттайя - аэропорт Бангкока",
+        category="transfer",
+        short_description="Индивидуальный трансфер из Паттайи в аэропорт Бангкока.",
+        full_description=(
+            "Индивидуальный трансфер на легковом автомобиле. До 3 пассажиров с багажом "
+            "или до 4 пассажиров без крупного багажа. Маршрут и время согласуются индивидуально."
+        ),
+        included=[
+            "индивидуальный трансфер на легковом автомобиле",
+            "подача по адресу в Паттайе",
+            "поездка до аэропорта Бангкока",
+            "согласование времени и маршрута",
+        ],
+        not_included=["платные парковки при длительном ожидании", "дополнительные остановки вне маршрута"],
+        duration="по маршруту",
+        travel_time="зависит от адреса, аэропорта и дорожной ситуации",
+        departure="по согласованию",
+        price_adult=None,
+        price_child=None,
+        price_from="по запросу",
+        what_to_bring=["время вылета", "адрес подачи", "контактный телефон", "информация о багаже"],
+        tags=["трансфер", "аэропорт", "паттайя", "бангкок", "индивидуальный трансфер"],
+    ),
+    "transfer_custom_route": make_tour(
+        title="Индивидуальный трансфер по маршруту",
+        category="transfer",
+        short_description="Индивидуальный трансфер по согласованному маршруту.",
+        full_description=(
+            "Индивидуальный трансфер на легковом автомобиле. До 3 пассажиров с багажом "
+            "или до 4 пассажиров без крупного багажа. Маршрут и время согласуются индивидуально."
+        ),
+        included=[
+            "индивидуальный трансфер на легковом автомобиле",
+            "маршрут по согласованию",
+            "подача в согласованное время",
+            "консультация по времени в пути",
+        ],
+        not_included=["платные парковки", "платные дороги", "дополнительное ожидание сверх договоренности"],
+        duration="по маршруту",
+        travel_time="зависит от маршрута и дорожной ситуации",
+        departure="по согласованию",
+        price_adult=None,
+        price_child=None,
+        price_from="по запросу",
+        what_to_bring=["адрес подачи", "адрес назначения", "время поездки", "контактный телефон", "информация о багаже"],
+        tags=["трансфер", "индивидуальный трансфер", "паттайя", "таиланд", "маршрут по запросу"],
+    ),
     "chang": make_tour(
         title="Ко Чанг",
+        status="draft",
         short_description="Поездка на Ко Чанг для отдыха у моря и смены обстановки.",
         full_description="Маршрут подбирается под даты, состав группы и формат отдыха.",
         included=["подбор программы", "консультация по маршруту"],
@@ -327,6 +413,7 @@ TOUR_CATALOG = {
     ),
     "bangkok": make_tour(
         title="Бангкок",
+        status="draft",
         short_description="Экскурсия в Бангкок с подбором маршрута под интересы гостей.",
         full_description="Программа подбирается под даты, состав группы и желаемый темп поездки.",
         included=["подбор программы", "консультация по маршруту"],
@@ -335,6 +422,7 @@ TOUR_CATALOG = {
     ),
     "nongnooch": make_tour(
         title="Нонг Нуч",
+        status="draft",
         short_description="Поездка в тропический сад Нонг Нуч для прогулки и красивых фото.",
         full_description="Формат и детали программы уточняются под даты и состав гостей.",
         included=["подбор программы", "консультация по маршруту"],
@@ -343,6 +431,7 @@ TOUR_CATALOG = {
     ),
     "khao_kheow": make_tour(
         title="Кхао Кхео",
+        status="draft",
         short_description="Поездка в открытый зоопарк Кхао Кхео для семей и любителей животных.",
         full_description="Детали программы уточняются под даты, возраст гостей и формат поездки.",
         included=["подбор программы", "консультация по маршруту"],
@@ -395,6 +484,7 @@ def format_tour_data(tour, include_route=True):
         *[f"- {hotel}" for hotel in public_tour["hotels"]],
         f"price_adult: {public_tour['price_adult']}",
         f"price_child: {public_tour['price_child']}",
+        f"price_from: {public_tour['price_from']}",
         "payment_methods:",
         *[f"- {method}" for method in public_tour["payment_methods"]],
         f"cancellation_policy: {public_tour['cancellation_policy']}",

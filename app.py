@@ -62,6 +62,7 @@ ADMIN_HELP_TEXT = """Доступные команды:
 /product <tour_key>
 /product_export <tour_key>
 /product_export_all
+/product_export_drafts
 /publish expert
 /publish sales
 /publish story
@@ -206,8 +207,8 @@ def format_product_export_description(tour):
             f"Длительность: {tour['duration']}",
             f"Время в пути: {tour['travel_time']}",
             f"Отправление: {tour.get('departure') or 'уточняется при бронировании'}",
-            f"Цена взрослый: {tour['price_adult']}",
-            f"Цена ребёнок: {tour['price_child']}",
+            f"Цена взрослый: {format_product_price(tour)}",
+            f"Цена ребёнок: {format_optional_price(tour.get('price_child'))}",
             "",
             "Что взять с собой:",
             *[f"- {item}" for item in tour["what_to_bring"]],
@@ -215,6 +216,14 @@ def format_product_export_description(tour):
     )
 
     return "\n".join(lines)
+
+
+def format_optional_price(price):
+    return price if price is not None else "по запросу"
+
+
+def format_product_price(tour):
+    return format_optional_price(tour.get("price_adult") or tour.get("price_from"))
 
 
 def format_product_export(tour_key):
@@ -226,7 +235,7 @@ def format_product_export(tour_key):
     return (
         f"Товар: {normalized_tour_key}\n\n"
         f"Название товара:\n{tour['title']}\n\n"
-        f"Цена:\n{tour['price_adult']}\n\n"
+        f"Цена:\n{format_product_price(tour)}\n\n"
         f"Описание товара:\n{format_product_export_description(tour)}"
     )
 
@@ -250,9 +259,24 @@ def split_export_messages(exports, max_length=3500):
     return messages
 
 
-def format_all_product_exports():
-    exports = [format_product_export(tour_key) for tour_key in TOUR_CATALOG]
+def format_product_exports_by_status(status):
+    exports = [
+        format_product_export(tour_key)
+        for tour_key, tour in TOUR_CATALOG.items()
+        if tour.get("status") == status
+    ]
+    if not exports:
+        return [f"Товаров со статусом {status} нет."]
+
     return split_export_messages(exports)
+
+
+def format_all_product_exports():
+    return format_product_exports_by_status("active")
+
+
+def format_draft_product_exports():
+    return format_product_exports_by_status("draft")
 
 
 def publish_scheduled_post(post_type):
@@ -389,6 +413,11 @@ def handle_admin_command(peer_id, text):
         if text != "/product_export_all":
             return "Неверный формат команды. Используйте /product_export_all."
         return format_all_product_exports()
+
+    if text.startswith("/product_export_drafts"):
+        if text != "/product_export_drafts":
+            return "Неверный формат команды. Используйте /product_export_drafts."
+        return format_draft_product_exports()
 
     if text.startswith("/product_export"):
         parts = text.split()
