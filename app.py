@@ -228,6 +228,30 @@ def render_oauth_error(message):
     )
 
 
+def get_token_prefix(token):
+    if not token:
+        return ""
+    return f"{token[:8]}..."
+
+
+def render_vk_token_debug_page(token_data):
+    access_token = token_data.get("access_token", "")
+    refresh_token = token_data.get("refresh_token", "")
+    expires_in = token_data.get("expires_in", "")
+    user_id = token_data.get("user_id") or token_data.get("id", "")
+    scope = token_data.get("scope", "")
+
+    return Response(
+        "VK TOKEN EXCHANGE OK\n\n"
+        f"access_token prefix={get_token_prefix(access_token)}\n"
+        f"refresh_token prefix={get_token_prefix(refresh_token)}\n"
+        f"expires_in={expires_in}\n"
+        f"user_id={user_id}\n"
+        f"scope={scope}",
+        mimetype="text/plain",
+    )
+
+
 def parse_status_command(text, command):
     parts = text.split()
     if len(parts) != 2 or parts[0] != command:
@@ -1157,17 +1181,62 @@ def vk_auth_start():
 
 @app.route("/vk/callback")
 def vk_auth_callback():
-    code = request.args.get("code", "")
-    state = request.args.get("state", "")
-    device_id = request.args.get("device_id", "")
+    code = request.args.get("code")
+    state = request.args.get("state")
+    device_id = request.args.get("device_id")
 
-    return Response(
-        "VK CALLBACK OK\n\n"
-        f"code={code}\n"
-        f"state={state}\n"
-        f"device_id={device_id}",
-        mimetype="text/plain",
-    )
+    if not code:
+        return render_oauth_error("VK не вернул code.")
+
+    if not state:
+        return render_oauth_error("VK не вернул state.")
+
+    cleanup_pkce_states()
+    state_data = PKCE_STATES.pop(state, None)
+    if not state_data:
+        return render_oauth_error("state не найден или истек. Запустите авторизацию заново.")
+
+    if not VK_APP_ID:
+        return render_oauth_error("VK_APP_ID не настроен в ENV.")
+
+    if not VK_REDIRECT_URI:
+        return render_oauth_error("VK_REDIRECT_URI не настроен в ENV.")
+
+    data = {
+        "grant_type": "authorization_code",
+        "code": code,
+        "client_id": VK_APP_ID,
+        "redirect_uri": VK_REDIRECT_URI,
+        "code_verifier": state_data["code_verifier"],
+    }
+    if device_id:
+        data["device_id"] = device_id
+
+    try:
+        response = requests.post(
+            "https://id.vk.ru/oauth2/auth",
+            data=data,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            timeout=15,
+        )
+        response.raise_for_status()
+    except requests.RequestException as error:
+        app.logger.exception("VK OAuth token exchange request failed")
+        return render_oauth_error(str(error))
+
+    try:
+        result = response.json()
+    except ValueError:
+        app.logger.error("VK OAuth token exchange returned non-JSON response")
+        return render_oauth_error("VK вернул не-JSON ответ при обмене code.")
+
+    if "error" in result:
+        error_text = result.get("error_description") or result.get("error") or "unknown_error"
+        app.logger.error("VK OAuth token exchange error: %s", error_text)
+        return render_oauth_error(error_text)
+
+    app.logger.info("VK OAuth token exchange completed")
+    return render_vk_token_debug_page(result)
 
 
 @app.route("/vk", methods=["POST"])
