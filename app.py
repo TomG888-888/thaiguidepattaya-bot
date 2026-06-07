@@ -57,6 +57,7 @@ ADMIN_HELP_TEXT = """Доступные команды:
 /help
 /admin_audit
 /photo_audit
+/photo_export <tour_key>
 /stats
 /leads
 /post expert
@@ -187,23 +188,10 @@ def format_product_export_description(tour):
         tour["full_description"],
     ]
 
-    route = tour.get("route")
-    if route:
-        lines.extend(["", "Маршрут:"])
-        if isinstance(route, dict):
-            stops = route.get("stops") or []
-            boat_view = route.get("boat_view") or []
-            if stops:
-                lines.extend(["Остановки:", *[f"- {item}" for item in stops]])
-            if boat_view:
-                lines.extend(["Обзор с лодки:", *[f"- {item}" for item in boat_view]])
-        else:
-            lines.extend([f"- {item}" for item in route])
-
     lines.extend(["", "Что включено:", *[f"- {item}" for item in tour["included"]]])
 
     if tour.get("not_included"):
-        lines.extend(["", "Не включено:", *[f"- {item}" for item in tour["not_included"]]])
+        lines.extend(["", "Что не включено:", *[f"- {item}" for item in tour["not_included"]]])
 
     lines.extend(
         [
@@ -303,12 +291,9 @@ def format_product_export(tour_key):
         return f"Неизвестный тур. Используйте: {AVAILABLE_TOUR_KEYS}."
 
     return (
-        f"Товар: {normalized_tour_key}\n\n"
         f"Название товара:\n{tour['title']}\n\n"
         f"Описание товара:\n{format_product_export_description(tour)}\n\n"
-        f"Цена:\n{format_product_export_price(tour)}\n\n"
-        f"Required-фото для карточки:\n{format_required_photos(tour)}\n\n"
-        f"{format_product_photos(normalized_tour_key)}"
+        f"Цена:\n{format_product_export_price(tour)}"
     )
 
 
@@ -450,6 +435,7 @@ def handle_admin_command(peer_id, text):
             "/help",
             "/admin_audit",
             "/photo_audit",
+            "/photo_export",
             "/stats",
             "/leads",
             "/post",
@@ -475,6 +461,12 @@ def handle_admin_command(peer_id, text):
 
     if text == "/photo_audit":
         return generate_photo_audit()
+
+    if text.startswith("/photo_export"):
+        parts = text.split()
+        if len(parts) != 2:
+            return "Неверный формат команды. Используйте /photo_export samet_1d_lunch."
+        return format_product_photos(parts[1])
 
     if text == "/stats":
         return format_lead_stats()
