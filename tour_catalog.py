@@ -14,12 +14,13 @@ def make_tour(
     hotels=None,
     adult_price="по запросу",
     child_price="по запросу",
+    internal_net_price=None,
     payment_methods=None,
     cancellation_policy=COMMON_CANCELLATION_POLICY,
     what_to_bring=None,
     tags=None,
 ):
-    return {
+    tour = {
         "title": title,
         "short_description": short_description,
         "full_description": full_description,
@@ -37,6 +38,9 @@ def make_tour(
         or ["купальник", "полотенце", "солнцезащитный крем", "головной убор", "наличные"],
         "tags": tags or [],
     }
+    if internal_net_price is not None:
+        tour["internal_net_price"] = internal_net_price
+    return tour
 
 
 TOUR_CATALOG = {
@@ -294,6 +298,7 @@ def get_tour(tour_key):
 
 
 def format_tour_data(tour):
+    """Return only public tour fields for GPT prompts and customer-facing cards."""
     lines = [
         f"title: {tour['title']}",
         f"short_description: {tour['short_description']}",

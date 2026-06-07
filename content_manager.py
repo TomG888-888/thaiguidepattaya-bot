@@ -14,12 +14,16 @@ def generate_post(topic):
         logger.error("OPENAI_API_KEY is not configured")
         return None
 
+    public_topic = (
+        f"{topic} Не упоминай внутренние цены, маржу или условия партнёров."
+    )
+
     try:
         client = OpenAI(api_key=OPENAI_API_KEY)
         response = client.responses.create(
             model=OPENAI_MODEL,
             instructions=get_seasonal_system_prompt(SYSTEM_PROMPT),
-            input=topic,
+            input=public_topic,
         )
         return response.output_text.strip()
     except Exception:
