@@ -24,6 +24,7 @@ from database import (
 )
 from product_manager import AVAILABLE_TOUR_KEYS, generate_product_card
 from seasonal_manager import get_current_season, init_current_season, set_current_season
+from tour_catalog import get_public_tour, normalize_tour_key
 
 
 app = Flask(__name__)
@@ -59,6 +60,7 @@ ADMIN_HELP_TEXT = """Доступные команды:
 /post sales
 /post story
 /product <tour_key>
+/publish_product <tour_key>
 /publish expert
 /publish sales
 /publish story
@@ -170,6 +172,128 @@ def publish_admin_post(post_type):
         return "Не удалось опубликовать пост."
 
     return f"Пост опубликован: {post_link}"
+
+
+def format_vk_market_description(tour):
+    lines = [
+        tour["short_description"],
+        "",
+        tour["full_description"],
+    ]
+
+    route = tour.get("route")
+    if route:
+        lines.extend(["", "Маршрут:"])
+        if isinstance(route, dict):
+            stops = route.get("stops") or []
+            boat_view = route.get("boat_view") or []
+            if stops:
+                lines.extend(["Остановки:", *[f"- {item}" for item in stops]])
+            if boat_view:
+                lines.extend(["Обзор с лодки:", *[f"- {item}" for item in boat_view]])
+        else:
+            lines.extend([f"- {item}" for item in route])
+
+    lines.extend(["", "Что включено:", *[f"- {item}" for item in tour["included"]]])
+
+    if tour.get("not_included"):
+        lines.extend(["", "Не включено:", *[f"- {item}" for item in tour["not_included"]]])
+
+    lines.extend(
+        [
+            "",
+            f"Длительность: {tour['duration']}",
+            f"Время в пути: {tour['travel_time']}",
+            f"Отправление: {tour.get('departure') or 'уточняется при бронировании'}",
+            f"Цена взрослый: {tour['price_adult']}",
+            f"Цена ребёнок: {tour['price_child']}",
+            "",
+            "Что взять с собой:",
+            *[f"- {item}" for item in tour["what_to_bring"]],
+        ]
+    )
+
+    return "\n".join(lines)
+
+
+def get_market_photo_params(tour):
+    photos = tour.get("photos") or {}
+    photo_params = {}
+
+    main_photo = str(photos.get("main") or "").strip()
+    if main_photo:
+        photo_params["main_photo_id"] = main_photo
+
+    gallery = [str(photo).strip() for photo in photos.get("gallery", []) if str(photo).strip()]
+    if gallery:
+        photo_params["photo_ids"] = ",".join(gallery)
+
+    return photo_params
+
+
+def publish_vk_market_product(tour):
+    if not VK_TOKEN:
+        app.logger.error("VK_TOKEN is not configured")
+        return None
+
+    if not VK_GROUP_ID:
+        app.logger.error("VK_GROUP_ID is not configured")
+        return None
+
+    try:
+        group_id = int(VK_GROUP_ID)
+    except ValueError:
+        app.logger.error("VK_GROUP_ID must be an integer")
+        return None
+
+    data = {
+        "access_token": VK_TOKEN,
+        "v": VK_API_VERSION,
+        "owner_id": -group_id,
+        "name": tour["title"],
+        "description": format_vk_market_description(tour),
+        "price": tour["price_adult"],
+    }
+    data.update(get_market_photo_params(tour))
+
+    try:
+        response = requests.post(
+            "https://api.vk.com/method/market.add",
+            data=data,
+            timeout=10,
+        )
+        response.raise_for_status()
+    except requests.RequestException:
+        app.logger.exception("VK market.add request failed")
+        return None
+
+    result = response.json()
+    if "error" in result:
+        app.logger.error("VK market.add error: %s", result["error"])
+        return None
+
+    product_id = result.get("response", {}).get("market_item_id")
+    if not product_id:
+        app.logger.error("VK market.add response without market_item_id: %s", result)
+        return None
+
+    return {
+        "id": product_id,
+        "link": f"https://vk.com/market-{group_id}?w=product-{group_id}_{product_id}",
+    }
+
+
+def publish_admin_product(tour_key):
+    normalized_tour_key = normalize_tour_key(tour_key)
+    tour = get_public_tour(normalized_tour_key)
+    if not tour:
+        return f"Неизвестный тур. Используйте: {AVAILABLE_TOUR_KEYS}."
+
+    product = publish_vk_market_product(tour)
+    if not product:
+        return "Не удалось создать товар VK."
+
+    return f"Товар создан: {product['link']}\nID товара: {product['id']}"
 
 
 def publish_scheduled_post(post_type):
@@ -307,6 +431,12 @@ def handle_admin_command(peer_id, text):
         if len(parts) != 2:
             return "Неверный формат команды. Используйте /product samet_1d_lunch."
         return generate_admin_product_card(parts[1])
+
+    if text.startswith("/publish_product"):
+        parts = text.split()
+        if len(parts) != 2:
+            return "Неверный формат команды. Используйте /publish_product samet_1d_lunch."
+        return publish_admin_product(parts[1])
 
     if text.startswith("/publish"):
         parts = text.split()
