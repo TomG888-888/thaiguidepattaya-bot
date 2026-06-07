@@ -260,6 +260,28 @@ def get_leads():
         return leads
 
 
+def get_lead_stage(peer_id):
+    param = placeholder()
+
+    with closing(get_connection()) as connection:
+        cursor = connection.cursor()
+        cursor.execute(
+            f"""
+            SELECT stage
+            FROM leads
+            WHERE peer_id = {param}
+            """,
+            (peer_id,),
+        )
+        row = cursor.fetchone()
+        cursor.close()
+
+        if not row:
+            return None
+
+        return row[0]
+
+
 def update_lead_status(peer_id, status):
     if status not in LEAD_STATUSES:
         return False

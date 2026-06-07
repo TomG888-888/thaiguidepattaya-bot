@@ -10,6 +10,7 @@ from ai_manager import generate_reply
 from database import (
     add_message,
     create_lead,
+    get_lead_stage,
     get_leads,
     get_lead_status_counts,
     get_message_count,
@@ -47,6 +48,7 @@ ADMIN_HELP_TEXT = """Доступные команды:
 /help
 /stats
 /leads
+/stage <peer_id> <stage>
 /booked <peer_id>
 /lost <peer_id>"""
 
@@ -91,6 +93,19 @@ def parse_status_command(text, command):
         return int(parts[1])
     except ValueError:
         return None
+
+
+def parse_stage_command(text):
+    parts = text.split()
+    if len(parts) != 3 or parts[0] != "/stage":
+        return None
+
+    try:
+        peer_id = int(parts[1])
+    except ValueError:
+        return None
+
+    return peer_id, parts[2]
 
 
 def has_people_count(text):
@@ -141,8 +156,29 @@ def is_qualified_message(text):
     return has_people_count(text) and has_travel_dates(text)
 
 
+def is_tour_offer(text):
+    normalized_text = text.lower()
+    offer_words = (
+        "предлагаю",
+        "вариант",
+        "подойдет",
+        "подойдёт",
+        "рекомендую",
+        "тур",
+        "экскурси",
+        "остров",
+        "маршрут",
+        "стоимость",
+        "цена",
+        "бат",
+        "thb",
+    )
+
+    return any(word in normalized_text for word in offer_words)
+
+
 def handle_admin_command(peer_id, text):
-    if not text.startswith(("/help", "/stats", "/leads", "/booked", "/lost")):
+    if not text.startswith(("/help", "/stats", "/leads", "/stage", "/booked", "/lost")):
         return None
 
     if not is_admin(peer_id):
@@ -157,6 +193,13 @@ def handle_admin_command(peer_id, text):
 
     if text == "/leads":
         return format_leads()
+
+    stage_command = parse_stage_command(text)
+    if stage_command is not None:
+        lead_peer_id, stage = stage_command
+        if update_lead_stage(lead_peer_id, stage):
+            return f"Лид {lead_peer_id} переведен в {stage}."
+        return f"Не удалось изменить стадию лида {lead_peer_id}."
 
     booked_peer_id = parse_status_command(text, "/booked")
     if booked_peer_id is not None:
@@ -254,6 +297,8 @@ def vk_callback():
                 if reply:
                     if send_vk_message(peer_id, reply):
                         add_message(peer_id, "assistant", reply)
+                        if get_lead_stage(peer_id) == "qualified" and is_tour_offer(reply):
+                            update_lead_stage(peer_id, "offer_sent")
                 else:
                     app.logger.error("No GPT reply generated for peer_id=%s", peer_id)
         else:
