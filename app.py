@@ -81,7 +81,22 @@ ADMIN_HELP_TEXT = """Доступные команды:
 /season set <season>
 /stage <peer_id> <stage>
 /booked <peer_id>
-/lost <peer_id>"""
+/lost <peer_id>
+/token_help"""
+
+
+TOKEN_HELP_TEXT = """USER_VK_TOKEN нужен для автоматического создания товаров VK Market.
+
+1. Создайте VK Standalone-приложение в разделе разработчиков:
+https://dev.vk.com/
+
+2. Получите пользовательский токен администратора с правами:
+market, photos, groups, wall, offline
+
+3. В Railway откройте Variables и добавьте:
+USER_VK_TOKEN=ваш_токен
+
+Подробная инструкция: docs/vk_user_token.md"""
 
 
 def format_lead_stats():
@@ -668,6 +683,7 @@ def handle_admin_command(peer_id, text):
             "/product",
             "/publish",
             "/vk_market_test",
+            "/token_help",
             "/season",
             "/stage",
             "/booked",
@@ -682,6 +698,9 @@ def handle_admin_command(peer_id, text):
 
     if text == "/help":
         return ADMIN_HELP_TEXT
+
+    if text == "/token_help":
+        return TOKEN_HELP_TEXT
 
     if text == "/admin_audit":
         return generate_admin_audit()
