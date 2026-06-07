@@ -81,6 +81,15 @@ def init_postgres_db():
                 )
                 """
             )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL,
+                    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
         connection.commit()
 
 
@@ -131,6 +140,15 @@ def init_sqlite_db():
             CREATE TABLE IF NOT EXISTS processed_events (
                 event_key TEXT PRIMARY KEY,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             """
         )
@@ -195,6 +213,57 @@ def mark_event_processed(event_key):
         cursor.close()
 
         return inserted
+
+
+def get_setting(key):
+    param = placeholder()
+
+    with closing(get_connection()) as connection:
+        cursor = connection.cursor()
+        cursor.execute(
+            f"""
+            SELECT value
+            FROM settings
+            WHERE key = {param}
+            """,
+            (key,),
+        )
+        row = cursor.fetchone()
+        cursor.close()
+
+        if not row:
+            return None
+
+        return row[0]
+
+
+def set_setting(key, value):
+    param = placeholder()
+
+    with closing(get_connection()) as connection:
+        cursor = connection.cursor()
+        if is_postgres():
+            cursor.execute(
+                """
+                INSERT INTO settings (key, value, updated_at)
+                VALUES (%s, %s, CURRENT_TIMESTAMP)
+                ON CONFLICT (key)
+                DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP
+                """,
+                (key, value),
+            )
+        else:
+            cursor.execute(
+                f"""
+                INSERT INTO settings (key, value, updated_at)
+                VALUES ({param}, {param}, CURRENT_TIMESTAMP)
+                ON CONFLICT(key)
+                DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
+                """,
+                (key, value),
+            )
+        connection.commit()
+        cursor.close()
 
 
 def get_message_count(peer_id):

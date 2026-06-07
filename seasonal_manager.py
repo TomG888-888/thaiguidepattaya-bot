@@ -1,7 +1,10 @@
 import os
 
+from database import get_setting, set_setting
 
-CURRENT_SEASON = os.getenv("CURRENT_SEASON", "low").lower()
+
+DEFAULT_SEASON = os.getenv("CURRENT_SEASON", "low").lower()
+SEASON_SETTING_KEY = "current_season"
 
 SEASON_CONTEXTS = {
     "high": """Текущий сезон: high.
@@ -17,10 +20,27 @@ SEASON_CONTEXTS = {
 
 
 def get_current_season():
-    if CURRENT_SEASON in SEASON_CONTEXTS:
-        return CURRENT_SEASON
+    current_season = (get_setting(SEASON_SETTING_KEY) or DEFAULT_SEASON).lower()
+    if current_season in SEASON_CONTEXTS:
+        return current_season
 
     return "low"
+
+
+def init_current_season():
+    if get_setting(SEASON_SETTING_KEY):
+        return
+
+    set_setting(SEASON_SETTING_KEY, get_current_season())
+
+
+def set_current_season(season):
+    normalized_season = season.lower()
+    if normalized_season not in SEASON_CONTEXTS:
+        return False
+
+    set_setting(SEASON_SETTING_KEY, normalized_season)
+    return True
 
 
 def get_season_context():

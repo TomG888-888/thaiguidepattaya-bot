@@ -22,11 +22,13 @@ from database import (
     update_lead_stage,
     update_lead_status,
 )
+from seasonal_manager import get_current_season, init_current_season, set_current_season
 
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 init_db()
+init_current_season()
 
 VK_TOKEN = os.getenv("VK_TOKEN")
 VK_GROUP_ID = os.getenv("VK_GROUP_ID")
@@ -58,6 +60,8 @@ ADMIN_HELP_TEXT = """Доступные команды:
 /publish expert
 /publish sales
 /publish story
+/season
+/season set <season>
 /stage <peer_id> <stage>
 /booked <peer_id>
 /lost <peer_id>"""
@@ -116,6 +120,17 @@ def parse_stage_command(text):
         return None
 
     return peer_id, parts[2]
+
+
+def parse_season_command(text):
+    parts = text.split()
+    if parts == ["/season"]:
+        return "show", None
+
+    if len(parts) == 3 and parts[0] == "/season" and parts[1] == "set":
+        return "set", parts[2]
+
+    return None, None
 
 
 def generate_admin_post(post_type):
@@ -234,7 +249,17 @@ def is_tour_offer(text):
 
 def handle_admin_command(peer_id, text):
     if not text.startswith(
-        ("/help", "/stats", "/leads", "/post", "/publish", "/stage", "/booked", "/lost")
+        (
+            "/help",
+            "/stats",
+            "/leads",
+            "/post",
+            "/publish",
+            "/season",
+            "/stage",
+            "/booked",
+            "/lost",
+        )
     ):
         return None
 
@@ -250,6 +275,15 @@ def handle_admin_command(peer_id, text):
 
     if text == "/leads":
         return format_leads()
+
+    season_action, season = parse_season_command(text)
+    if season_action == "show":
+        return f"Текущий сезон: {get_current_season()}"
+
+    if season_action == "set":
+        if set_current_season(season):
+            return f"Сезон изменен: {get_current_season()}"
+        return "Неверный сезон. Используйте: high, low или rainy."
 
     if text.startswith("/post"):
         parts = text.split()
