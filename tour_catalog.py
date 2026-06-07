@@ -5,6 +5,7 @@ PUBLIC_TOUR_FIELDS = (
     "title",
     "short_description",
     "full_description",
+    "route",
     "included",
     "not_included",
     "duration",
@@ -25,6 +26,7 @@ def make_tour(
     short_description,
     full_description,
     included,
+    route=None,
     not_included=None,
     duration="по запросу",
     travel_time="по запросу",
@@ -42,6 +44,7 @@ def make_tour(
         "title": title,
         "short_description": short_description,
         "full_description": full_description,
+        "route": route or [],
         "included": included,
         "not_included": not_included or ["личные расходы", "дополнительные активности"],
         "duration": duration,
@@ -280,6 +283,17 @@ TOUR_CATALOG = {
         duration="1 день",
         travel_time="зависит от маршрута и погодных условий",
         departure="07:30–08:00 из Паттайи",
+        route=[
+            "Koh Talu",
+            "Koh Ku Dee",
+            "Koh Kram",
+            "Koh Samet",
+            "Kruai",
+            "Pla Tin",
+            "Klet",
+            "Yung Klua",
+            "Khang Khao",
+        ],
         price_adult="по запросу",
         price_child="по запросу",
         internal_net_price={"adult": 2000, "child": 1700},
@@ -334,13 +348,18 @@ def get_public_tour(tour_key):
     return {field: tour[field] for field in PUBLIC_TOUR_FIELDS if field in tour}
 
 
-def format_tour_data(tour):
+def format_tour_data(tour, include_route=True):
     """Return only public tour fields for GPT prompts and customer-facing cards."""
     public_tour = {field: tour[field] for field in PUBLIC_TOUR_FIELDS if field in tour}
     lines = [
         f"title: {public_tour['title']}",
         f"short_description: {public_tour['short_description']}",
         f"full_description: {public_tour['full_description']}",
+    ]
+    if include_route and public_tour.get("route"):
+        lines.extend(["route:", *[f"- {item}" for item in public_tour["route"]]])
+
+    lines.extend([
         "included:",
         *[f"- {item}" for item in public_tour["included"]],
         "not_included:",
@@ -359,7 +378,7 @@ def format_tour_data(tour):
         *[f"- {item}" for item in public_tour["what_to_bring"]],
         "tags:",
         *[f"- {tag}" for tag in public_tour["tags"]],
-    ]
+    ])
     return "\n".join(lines)
 
 

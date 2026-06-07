@@ -1,4 +1,5 @@
 import logging
+import re
 
 from openai import OpenAI
 
@@ -10,6 +11,30 @@ from tour_catalog import TOUR_CATALOG, format_tour_data, get_public_tour, normal
 logger = logging.getLogger(__name__)
 
 AVAILABLE_TOUR_KEYS = ", ".join(TOUR_CATALOG.keys())
+
+
+def format_route_block(tour):
+    route = tour.get("route") or []
+    if not route:
+        return ""
+
+    return "\n".join(["🧭 Маршрут:", *[f"- {item}" for item in route]])
+
+
+def add_route_before_included(card_text, tour):
+    route_block = format_route_block(tour)
+    if not route_block:
+        return card_text.strip()
+
+    included_match = re.search(r"(?im)^.*что\s+включено.*$", card_text)
+    if not included_match:
+        return f"{card_text.strip()}\n\n{route_block}"
+
+    return (
+        f"{card_text[:included_match.start()].rstrip()}\n\n"
+        f"{route_block}\n\n"
+        f"{card_text[included_match.start():].lstrip()}"
+    ).strip()
 
 
 def generate_product_card(tour_key):
@@ -28,7 +53,8 @@ def generate_product_card(tour_key):
         "Используй только данные из каталога ниже. Не выдумывай цены, отели или условия.\n"
         "Показывай только клиентские цены из публичного каталога. Не упоминай "
         "внутренние цены, маржу или условия партнёров.\n"
-        f"Данные тура:\n{format_tour_data(tour)}\n\n"
+        "Если в данных есть маршрут, не выводи его сам: маршрут будет добавлен системой отдельно.\n"
+        f"Данные тура:\n{format_tour_data(tour, include_route=False)}\n\n"
         "Строго используй структуру:\n"
         "заголовок\n"
         "эмоциональный крючок\n"
@@ -51,7 +77,7 @@ def generate_product_card(tour_key):
             instructions=get_seasonal_system_prompt(SYSTEM_PROMPT),
             input=prompt,
         )
-        return response.output_text.strip()
+        return add_route_before_included(response.output_text, tour)
     except Exception:
         logger.exception("OpenAI product card generation failed")
         return None
