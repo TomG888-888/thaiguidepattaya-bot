@@ -3,6 +3,7 @@ import os
 import random
 import re
 
+from apscheduler.schedulers.background import BackgroundScheduler
 from flask import Flask, Response, jsonify, request
 import requests
 
@@ -30,6 +31,7 @@ init_db()
 VK_TOKEN = os.getenv("VK_TOKEN")
 VK_GROUP_ID = os.getenv("VK_GROUP_ID")
 ADMIN_ID = os.getenv("ADMIN_ID")
+AUTO_POSTING_ENABLED = os.getenv("AUTO_POSTING_ENABLED", "false").lower() == "true"
 VK_CONFIRMATION_RESPONSE = "dfe8da6d"
 VK_API_VERSION = "5.199"
 AUTO_REPLY_TEXT = """Привет!
@@ -143,6 +145,22 @@ def publish_admin_post(post_type):
         return "Не удалось опубликовать пост."
 
     return f"Пост опубликован: {post_link}"
+
+
+def publish_scheduled_post(post_type):
+    app.logger.info("Scheduled post started: %s", post_type)
+
+    post = generate_admin_post(post_type)
+    if post.startswith("Неверный тип поста") or post.startswith("Не удалось"):
+        app.logger.error("Scheduled post generation failed: %s", post)
+        return
+
+    post_link = publish_vk_wall_post(post)
+    if not post_link:
+        app.logger.error("Scheduled post publishing failed: %s", post_type)
+        return
+
+    app.logger.info("Scheduled post published: %s", post_link)
 
 
 def has_people_count(text):
@@ -357,6 +375,50 @@ def publish_vk_wall_post(message):
         return None
 
     return f"https://vk.com/wall-{group_id}_{post_id}"
+
+
+def start_scheduler():
+    if not AUTO_POSTING_ENABLED:
+        app.logger.info("Auto posting scheduler is disabled")
+        return None
+
+    scheduler = BackgroundScheduler(timezone="Asia/Bangkok")
+    scheduler.add_job(
+        publish_scheduled_post,
+        "cron",
+        day_of_week="mon",
+        hour=10,
+        minute=0,
+        args=["expert"],
+        id="auto_post_expert_monday",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        publish_scheduled_post,
+        "cron",
+        day_of_week="wed",
+        hour=10,
+        minute=0,
+        args=["story"],
+        id="auto_post_story_wednesday",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        publish_scheduled_post,
+        "cron",
+        day_of_week="fri",
+        hour=10,
+        minute=0,
+        args=["sales"],
+        id="auto_post_sales_friday",
+        replace_existing=True,
+    )
+    scheduler.start()
+    app.logger.info("Auto posting scheduler started")
+    return scheduler
+
+
+scheduler = start_scheduler()
 
 
 @app.route("/")
