@@ -210,8 +210,6 @@ def format_product_export_description(tour):
             f"Длительность: {tour['duration']}",
             f"Время в пути: {tour['travel_time']}",
             f"Отправление: {tour.get('departure') or 'уточняется при бронировании'}",
-            f"Цена взрослый: {format_product_price(tour)}",
-            f"Цена ребёнок: {format_optional_price(tour.get('price_child'))}",
             "",
             "Что взять с собой:",
             *[f"- {item}" for item in tour["what_to_bring"]],
