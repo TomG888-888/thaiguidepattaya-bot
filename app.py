@@ -1,5 +1,6 @@
 import logging
 import os
+from pathlib import Path
 import random
 import re
 
@@ -33,8 +34,11 @@ logging.basicConfig(level=logging.INFO)
 init_db()
 init_current_season()
 
+BASE_DIR = Path(__file__).resolve().parent
 VK_TOKEN = os.getenv("VK_TOKEN")
+USER_VK_TOKEN = os.getenv("USER_VK_TOKEN")
 VK_GROUP_ID = os.getenv("VK_GROUP_ID")
+VK_MARKET_CATEGORY_ID = os.getenv("VK_MARKET_CATEGORY_ID", "1")
 ADMIN_ID = os.getenv("ADMIN_ID")
 AUTO_POSTING_ENABLED = os.getenv("AUTO_POSTING_ENABLED", "false").lower() == "true"
 VK_CONFIRMATION_RESPONSE = "dfe8da6d"
@@ -60,6 +64,7 @@ ADMIN_HELP_TEXT = """Доступные команды:
 /photo_export <tour_key>
 /stats
 /leads
+/create_product <tour_key>
 /post expert
 /post sales
 /post story
@@ -305,6 +310,178 @@ def safe_format_product_export(tour_key):
         return f"Ошибка product_export: {error}"
 
 
+def get_market_price(tour):
+    price = tour.get("price_adult") if is_filled_price(tour.get("price_adult")) else tour.get("price_from")
+    if not is_filled_price(price):
+        return None
+
+    normalized_price = str(price).strip().lower().replace("бат", "").replace("thb", "").strip()
+    normalized_price = normalized_price.replace(" ", "").replace(",", ".")
+    if not re.fullmatch(r"\d+(?:\.\d+)?", normalized_price):
+        return None
+
+    return normalized_price
+
+
+def get_product_photo_paths(tour):
+    photos = tour.get("photos") or {}
+    cover = photos.get("cover")
+    gallery = photos.get("gallery") or []
+    photo_paths = [
+        cover,
+        gallery[0] if len(gallery) > 0 else "",
+        gallery[1] if len(gallery) > 1 else "",
+        gallery[2] if len(gallery) > 2 else "",
+        gallery[3] if len(gallery) > 3 else "",
+    ]
+
+    if not all(photo_paths):
+        return []
+
+    local_paths = []
+    for photo_path in photo_paths:
+        if not photo_path.startswith("/static/"):
+            return []
+
+        local_path = BASE_DIR / photo_path.lstrip("/")
+        if not local_path.exists():
+            return []
+        local_paths.append(local_path)
+
+    return local_paths
+
+
+def call_vk_api(method, token, params=None):
+    try:
+        response = requests.post(
+            f"https://api.vk.com/method/{method}",
+            data={
+                "access_token": token,
+                "v": VK_API_VERSION,
+                **(params or {}),
+            },
+            timeout=20,
+        )
+        response.raise_for_status()
+        result = response.json()
+    except requests.RequestException as error:
+        raise RuntimeError(f"VK API request failed: {method}: {error}") from error
+    except ValueError as error:
+        raise RuntimeError(f"VK API returned non-JSON response: {method}") from error
+
+    if "error" in result:
+        raise RuntimeError(f"VK API error {method}: {result['error']}")
+
+    return result.get("response")
+
+
+def upload_market_photo(photo_path, group_id, main_photo):
+    upload_server = call_vk_api(
+        "photos.getMarketUploadServer",
+        USER_VK_TOKEN,
+        {
+            "group_id": group_id,
+            "main_photo": 1 if main_photo else 0,
+        },
+    )
+    upload_url = upload_server.get("upload_url") if isinstance(upload_server, dict) else None
+    if not upload_url:
+        raise RuntimeError("VK did not return market photo upload_url")
+
+    try:
+        with photo_path.open("rb") as photo_file:
+            upload_response = requests.post(
+                upload_url,
+                files={"file0": (photo_path.name, photo_file, "image/jpeg")},
+                timeout=30,
+            )
+        upload_response.raise_for_status()
+        upload_result = upload_response.json()
+    except requests.RequestException as error:
+        raise RuntimeError(f"VK market photo upload failed: {photo_path.name}: {error}") from error
+    except ValueError as error:
+        raise RuntimeError(f"VK market photo upload returned non-JSON response: {photo_path.name}") from error
+
+    saved_photos = call_vk_api(
+        "photos.saveMarketPhoto",
+        USER_VK_TOKEN,
+        {
+            **upload_result,
+            "group_id": group_id,
+            "main_photo": 1 if main_photo else 0,
+        },
+    )
+    if not saved_photos:
+        raise RuntimeError(f"VK did not save market photo: {photo_path.name}")
+
+    photo = saved_photos[0] if isinstance(saved_photos, list) else saved_photos
+    photo_id = photo.get("id") if isinstance(photo, dict) else None
+    if not photo_id:
+        raise RuntimeError(f"VK saved market photo without id: {photo_path.name}")
+
+    return photo_id
+
+
+def create_vk_market_product(tour_key):
+    if not USER_VK_TOKEN:
+        return "Для автоматического создания товаров нужен USER_VK_TOKEN администратора."
+
+    if not VK_GROUP_ID:
+        return "Не указан VK_GROUP_ID."
+
+    normalized_tour_key = normalize_tour_key(tour_key)
+    tour = get_public_tour(normalized_tour_key)
+    if not tour:
+        return f"Неизвестный тур. Используйте: {AVAILABLE_TOUR_KEYS}."
+
+    price = get_market_price(tour)
+    if not price:
+        return "Для создания товара нужна числовая цена."
+
+    try:
+        group_id = int(VK_GROUP_ID)
+        category_id = int(VK_MARKET_CATEGORY_ID)
+    except ValueError:
+        return "VK_GROUP_ID и VK_MARKET_CATEGORY_ID должны быть числами."
+
+    photo_paths = get_product_photo_paths(tour)
+    if len(photo_paths) != 5:
+        return "Фото не заполнены."
+
+    try:
+        app.logger.info("VK market product creation started: tour_key=%s", normalized_tour_key)
+        main_photo_id = upload_market_photo(photo_paths[0], group_id, main_photo=True)
+        gallery_photo_ids = [
+            upload_market_photo(photo_path, group_id, main_photo=False)
+            for photo_path in photo_paths[1:]
+        ]
+        product = call_vk_api(
+            "market.add",
+            USER_VK_TOKEN,
+            {
+                "owner_id": -group_id,
+                "name": tour["title"],
+                "description": format_product_export_description(tour),
+                "category_id": category_id,
+                "price": price,
+                "main_photo_id": main_photo_id,
+                "photo_ids": ",".join(str(photo_id) for photo_id in gallery_photo_ids),
+            },
+        )
+    except Exception as error:
+        app.logger.exception("VK market product creation failed: tour_key=%s", normalized_tour_key)
+        return f"Ошибка create_product: {error}"
+
+    item_id = product.get("market_item_id") or product.get("item_id") if isinstance(product, dict) else None
+    if not item_id:
+        app.logger.error("VK market.add response without item id: %s", product)
+        return f"Товар создан, но VK не вернул ID товара: {product}"
+
+    product_link = f"https://vk.com/market-{group_id}?w=product-{group_id}_{item_id}"
+    app.logger.info("VK market product created: tour_key=%s, item_id=%s", normalized_tour_key, item_id)
+    return f"Товар создан: {product_link}"
+
+
 def split_export_messages(exports, max_length=3500):
     messages = []
     current_message = ""
@@ -438,6 +615,7 @@ def handle_admin_command(peer_id, text):
             "/photo_export",
             "/stats",
             "/leads",
+            "/create_product",
             "/post",
             "/product",
             "/publish",
@@ -473,6 +651,12 @@ def handle_admin_command(peer_id, text):
 
     if text == "/leads":
         return format_leads()
+
+    if text.startswith("/create_product"):
+        parts = text.split()
+        if len(parts) != 2:
+            return "Неверный формат команды. Используйте /create_product samet_2d_silver_sand."
+        return create_vk_market_product(parts[1])
 
     season_action, season = parse_season_command(text)
     if season_action == "show":
@@ -735,7 +919,7 @@ def vk_callback():
             if admin_reply:
                 reply_peer_id = (
                     sender_id
-                    if text.strip().startswith(("/post", "/product", "/publish"))
+                    if text.strip().startswith(("/post", "/product", "/publish", "/create_product", "/photo"))
                     else peer_id
                 )
                 admin_replies = admin_reply if isinstance(admin_reply, list) else [admin_reply]
