@@ -24,7 +24,7 @@ from database import (
 )
 from product_manager import AVAILABLE_TOUR_KEYS, generate_product_card
 from seasonal_manager import get_current_season, init_current_season, set_current_season
-from tour_catalog import get_public_tour, normalize_tour_key
+from tour_catalog import TOUR_CATALOG, get_public_tour, normalize_tour_key
 
 
 app = Flask(__name__)
@@ -60,7 +60,8 @@ ADMIN_HELP_TEXT = """Доступные команды:
 /post sales
 /post story
 /product <tour_key>
-/publish_product <tour_key>
+/product_export <tour_key>
+/product_export_all
 /publish expert
 /publish sales
 /publish story
@@ -174,7 +175,7 @@ def publish_admin_post(post_type):
     return f"Пост опубликован: {post_link}"
 
 
-def format_vk_market_description(tour):
+def format_product_export_description(tour):
     lines = [
         tour["short_description"],
         "",
@@ -216,84 +217,42 @@ def format_vk_market_description(tour):
     return "\n".join(lines)
 
 
-def get_market_photo_params(tour):
-    photos = tour.get("photos") or {}
-    photo_params = {}
-
-    main_photo = str(photos.get("main") or "").strip()
-    if main_photo:
-        photo_params["main_photo_id"] = main_photo
-
-    gallery = [str(photo).strip() for photo in photos.get("gallery", []) if str(photo).strip()]
-    if gallery:
-        photo_params["photo_ids"] = ",".join(gallery)
-
-    return photo_params
-
-
-def publish_vk_market_product(tour):
-    if not VK_TOKEN:
-        app.logger.error("VK_TOKEN is not configured")
-        return None
-
-    if not VK_GROUP_ID:
-        app.logger.error("VK_GROUP_ID is not configured")
-        return None
-
-    try:
-        group_id = int(VK_GROUP_ID)
-    except ValueError:
-        app.logger.error("VK_GROUP_ID must be an integer")
-        return None
-
-    data = {
-        "access_token": VK_TOKEN,
-        "v": VK_API_VERSION,
-        "owner_id": -group_id,
-        "name": tour["title"],
-        "description": format_vk_market_description(tour),
-        "price": tour["price_adult"],
-    }
-    data.update(get_market_photo_params(tour))
-
-    try:
-        response = requests.post(
-            "https://api.vk.com/method/market.add",
-            data=data,
-            timeout=10,
-        )
-        response.raise_for_status()
-    except requests.RequestException:
-        app.logger.exception("VK market.add request failed")
-        return None
-
-    result = response.json()
-    if "error" in result:
-        app.logger.error("VK market.add error: %s", result["error"])
-        return None
-
-    product_id = result.get("response", {}).get("market_item_id")
-    if not product_id:
-        app.logger.error("VK market.add response without market_item_id: %s", result)
-        return None
-
-    return {
-        "id": product_id,
-        "link": f"https://vk.com/market-{group_id}?w=product-{group_id}_{product_id}",
-    }
-
-
-def publish_admin_product(tour_key):
+def format_product_export(tour_key):
     normalized_tour_key = normalize_tour_key(tour_key)
     tour = get_public_tour(normalized_tour_key)
     if not tour:
         return f"Неизвестный тур. Используйте: {AVAILABLE_TOUR_KEYS}."
 
-    product = publish_vk_market_product(tour)
-    if not product:
-        return "Не удалось создать товар VK."
+    return (
+        f"Товар: {normalized_tour_key}\n\n"
+        f"Название товара:\n{tour['title']}\n\n"
+        f"Цена:\n{tour['price_adult']}\n\n"
+        f"Описание товара:\n{format_product_export_description(tour)}"
+    )
 
-    return f"Товар создан: {product['link']}\nID товара: {product['id']}"
+
+def split_export_messages(exports, max_length=3500):
+    messages = []
+    current_message = ""
+    for export in exports:
+        candidate = export if not current_message else f"{current_message}\n\n---\n\n{export}"
+        if len(candidate) <= max_length:
+            current_message = candidate
+            continue
+
+        if current_message:
+            messages.append(current_message)
+        current_message = export
+
+    if current_message:
+        messages.append(current_message)
+
+    return messages
+
+
+def format_all_product_exports():
+    exports = [format_product_export(tour_key) for tour_key in TOUR_CATALOG]
+    return split_export_messages(exports)
 
 
 def publish_scheduled_post(post_type):
@@ -426,6 +385,17 @@ def handle_admin_command(peer_id, text):
             return "Неверный формат команды. Используйте /post expert, /post sales или /post story."
         return generate_admin_post(parts[1])
 
+    if text.startswith("/product_export_all"):
+        if text != "/product_export_all":
+            return "Неверный формат команды. Используйте /product_export_all."
+        return format_all_product_exports()
+
+    if text.startswith("/product_export"):
+        parts = text.split()
+        if len(parts) != 2:
+            return "Неверный формат команды. Используйте /product_export samet_1d_lunch."
+        return format_product_export(parts[1])
+
     if text.startswith("/product"):
         parts = text.split()
         if len(parts) != 2:
@@ -433,10 +403,7 @@ def handle_admin_command(peer_id, text):
         return generate_admin_product_card(parts[1])
 
     if text.startswith("/publish_product"):
-        parts = text.split()
-        if len(parts) != 2:
-            return "Неверный формат команды. Используйте /publish_product samet_1d_lunch."
-        return publish_admin_product(parts[1])
+        return "Команда /publish_product отключена. Используйте /product_export <tour_key>."
 
     if text.startswith("/publish"):
         parts = text.split()
@@ -649,8 +616,10 @@ def vk_callback():
                     if text.strip().startswith(("/post", "/product", "/publish"))
                     else peer_id
                 )
-                if send_vk_message(reply_peer_id, admin_reply):
-                    add_message(peer_id, "assistant", admin_reply)
+                admin_replies = admin_reply if isinstance(admin_reply, list) else [admin_reply]
+                for reply_part in admin_replies:
+                    if send_vk_message(reply_peer_id, reply_part):
+                        add_message(peer_id, "assistant", reply_part)
             elif is_first_message:
                 if send_vk_message(peer_id, AUTO_REPLY_TEXT):
                     add_message(peer_id, "assistant", AUTO_REPLY_TEXT)
