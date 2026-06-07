@@ -53,6 +53,9 @@ ADMIN_HELP_TEXT = """Доступные команды:
 /post expert
 /post sales
 /post story
+/publish expert
+/publish sales
+/publish story
 /stage <peer_id> <stage>
 /booked <peer_id>
 /lost <peer_id>"""
@@ -130,6 +133,18 @@ def generate_admin_post(post_type):
     return post
 
 
+def publish_admin_post(post_type):
+    post = generate_admin_post(post_type)
+    if post.startswith("Неверный тип поста") or post.startswith("Не удалось"):
+        return post
+
+    post_link = publish_vk_wall_post(post)
+    if not post_link:
+        return "Не удалось опубликовать пост."
+
+    return f"Пост опубликован: {post_link}"
+
+
 def has_people_count(text):
     normalized_text = text.lower()
     if re.search(r"\b\d+\s*(человек|чел|персон|гост|турист)", normalized_text):
@@ -200,7 +215,9 @@ def is_tour_offer(text):
 
 
 def handle_admin_command(peer_id, text):
-    if not text.startswith(("/help", "/stats", "/leads", "/post", "/stage", "/booked", "/lost")):
+    if not text.startswith(
+        ("/help", "/stats", "/leads", "/post", "/publish", "/stage", "/booked", "/lost")
+    ):
         return None
 
     if not is_admin(peer_id):
@@ -221,6 +238,12 @@ def handle_admin_command(peer_id, text):
         if len(parts) != 2:
             return "Неверный формат команды. Используйте /post expert, /post sales или /post story."
         return generate_admin_post(parts[1])
+
+    if text.startswith("/publish"):
+        parts = text.split()
+        if len(parts) != 2:
+            return "Неверный формат команды. Используйте /publish expert, /publish sales или /publish story."
+        return publish_admin_post(parts[1])
 
     stage_command = parse_stage_command(text)
     if stage_command is not None:
@@ -291,6 +314,51 @@ def send_vk_message(peer_id, message):
     return True
 
 
+def publish_vk_wall_post(message):
+    if not VK_TOKEN:
+        app.logger.error("VK_TOKEN is not configured")
+        return None
+
+    if not VK_GROUP_ID:
+        app.logger.error("VK_GROUP_ID is not configured")
+        return None
+
+    try:
+        group_id = int(VK_GROUP_ID)
+    except ValueError:
+        app.logger.error("VK_GROUP_ID must be an integer")
+        return None
+
+    try:
+        response = requests.post(
+            "https://api.vk.com/method/wall.post",
+            data={
+                "access_token": VK_TOKEN,
+                "v": VK_API_VERSION,
+                "owner_id": -group_id,
+                "from_group": 1,
+                "message": message,
+            },
+            timeout=10,
+        )
+        response.raise_for_status()
+    except requests.RequestException:
+        app.logger.exception("VK wall.post request failed")
+        return None
+
+    result = response.json()
+    if "error" in result:
+        app.logger.error("VK wall.post error: %s", result["error"])
+        return None
+
+    post_id = result.get("response", {}).get("post_id")
+    if not post_id:
+        app.logger.error("VK wall.post response without post_id: %s", result)
+        return None
+
+    return f"https://vk.com/wall-{group_id}_{post_id}"
+
+
 @app.route("/")
 def index():
     return jsonify(
@@ -333,7 +401,11 @@ def vk_callback():
 
             admin_reply = handle_admin_command(sender_id, text.strip())
             if admin_reply:
-                reply_peer_id = sender_id if text.strip().startswith("/post") else peer_id
+                reply_peer_id = (
+                    sender_id
+                    if text.strip().startswith(("/post", "/publish"))
+                    else peer_id
+                )
                 if send_vk_message(reply_peer_id, admin_reply):
                     add_message(peer_id, "assistant", admin_reply)
             elif is_first_message:
