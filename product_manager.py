@@ -4,7 +4,7 @@ from openai import OpenAI
 
 from ai_manager import OPENAI_API_KEY, OPENAI_MODEL, SYSTEM_PROMPT
 from seasonal_manager import get_seasonal_system_prompt
-from tour_catalog import TOUR_CATALOG, format_tour_data, get_tour, normalize_tour_key
+from tour_catalog import TOUR_CATALOG, format_tour_data, get_public_tour, normalize_tour_key
 
 
 logger = logging.getLogger(__name__)
@@ -14,7 +14,7 @@ AVAILABLE_TOUR_KEYS = ", ".join(TOUR_CATALOG.keys())
 
 def generate_product_card(tour_key):
     normalized_tour_key = normalize_tour_key(tour_key)
-    tour = get_tour(normalized_tour_key)
+    tour = get_public_tour(normalized_tour_key)
     if not tour:
         logger.error("Unknown tour key: %s", tour_key)
         return None

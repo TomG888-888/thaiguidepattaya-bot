@@ -1,6 +1,22 @@
 COMMON_PAYMENT_METHODS = ["наличные", "перевод"]
 COMMON_CANCELLATION_POLICY = "Условия отмены зависят от даты поездки и подтверждаются при бронировании."
 COMMON_TRAVEL_TIME = "около 1 часа на минивене и 15 минут на скоростном катере"
+PUBLIC_TOUR_FIELDS = (
+    "title",
+    "short_description",
+    "full_description",
+    "included",
+    "not_included",
+    "duration",
+    "travel_time",
+    "hotels",
+    "price_adult",
+    "price_child",
+    "payment_methods",
+    "cancellation_policy",
+    "what_to_bring",
+    "tags",
+)
 
 
 def make_tour(
@@ -12,8 +28,8 @@ def make_tour(
     duration="по запросу",
     travel_time="по запросу",
     hotels=None,
-    adult_price="по запросу",
-    child_price="по запросу",
+    price_adult="по запросу",
+    price_child="по запросу",
     internal_net_price=None,
     payment_methods=None,
     cancellation_policy=COMMON_CANCELLATION_POLICY,
@@ -29,9 +45,8 @@ def make_tour(
         "duration": duration,
         "travel_time": travel_time,
         "hotels": hotels or [],
-        "adult_price": adult_price,
-        "child_price": child_price,
-        "price_from": adult_price,
+        "price_adult": price_adult,
+        "price_child": price_child,
         "payment_methods": payment_methods or COMMON_PAYMENT_METHODS,
         "cancellation_policy": cancellation_policy,
         "what_to_bring": what_to_bring
@@ -62,8 +77,8 @@ TOUR_CATALOG = {
         not_included=["личные расходы", "напитки сверх программы", "дополнительные активности на пляже"],
         duration="1 день",
         travel_time=COMMON_TRAVEL_TIME,
-        adult_price="по запросу",
-        child_price="по запросу",
+        price_adult="по запросу",
+        price_child="по запросу",
         tags=["самет", "острова", "море", "пляж", "обед", "1 день", "паттайя"],
     ),
     "samet_1d_no_lunch": make_tour(
@@ -83,8 +98,8 @@ TOUR_CATALOG = {
         not_included=["обед", "личные расходы", "напитки", "дополнительные активности на пляже"],
         duration="1 день",
         travel_time=COMMON_TRAVEL_TIME,
-        adult_price="по запросу",
-        child_price="по запросу",
+        price_adult="по запросу",
+        price_child="по запросу",
         tags=["самет", "острова", "море", "пляж", "без обеда", "1 день", "паттайя"],
     ),
     "samet_1d_fireshow": make_tour(
@@ -105,8 +120,8 @@ TOUR_CATALOG = {
         not_included=["личные расходы", "питание и напитки сверх программы", "дополнительные активности"],
         duration="1 день с вечерней программой",
         travel_time=COMMON_TRAVEL_TIME,
-        adult_price="по запросу",
-        child_price="по запросу",
+        price_adult="по запросу",
+        price_child="по запросу",
         tags=["самет", "острова", "море", "файер шоу", "вечер", "паттайя"],
     ),
     "samet_2d_seabreeze": make_tour(
@@ -126,8 +141,8 @@ TOUR_CATALOG = {
         duration="2 дня",
         travel_time=COMMON_TRAVEL_TIME,
         hotels=["Sea Breeze"],
-        adult_price="по запросу",
-        child_price="по запросу",
+        price_adult="по запросу",
+        price_child="по запросу",
         what_to_bring=["купальник", "полотенце", "сменная одежда", "солнцезащитный крем", "наличные"],
         tags=["самет", "2 дня", "ночевка", "sea breeze", "острова", "паттайя"],
     ),
@@ -144,8 +159,8 @@ TOUR_CATALOG = {
         duration="2 дня",
         travel_time=COMMON_TRAVEL_TIME,
         hotels=["Silver Sand Hotel"],
-        adult_price="по запросу",
-        child_price="по запросу",
+        price_adult="по запросу",
+        price_child="по запросу",
         tags=["самет", "2 дня", "silver sand", "ночевка", "острова", "паттайя"],
     ),
     "samet_2d_silver_sand_full": make_tour(
@@ -165,8 +180,8 @@ TOUR_CATALOG = {
         duration="2 дня",
         travel_time=COMMON_TRAVEL_TIME,
         hotels=["Silver Sand Hotel"],
-        adult_price="по запросу",
-        child_price="по запросу",
+        price_adult="по запросу",
+        price_child="по запросу",
         tags=["самет", "2 дня", "silver sand", "полный пакет", "ночевка", "паттайя"],
     ),
     "samet_2d_toks": make_tour(
@@ -182,8 +197,8 @@ TOUR_CATALOG = {
         duration="2 дня",
         travel_time=COMMON_TRAVEL_TIME,
         hotels=["Tok’s Little Hut"],
-        adult_price="по запросу",
-        child_price="по запросу",
+        price_adult="по запросу",
+        price_child="по запросу",
         tags=["самет", "2 дня", "toks little hut", "ночевка", "острова", "паттайя"],
     ),
     "samet_2d_samed_villa": make_tour(
@@ -199,8 +214,8 @@ TOUR_CATALOG = {
         duration="2 дня",
         travel_time=COMMON_TRAVEL_TIME,
         hotels=["Samed Villa"],
-        adult_price="по запросу",
-        child_price="по запросу",
+        price_adult="по запросу",
+        price_child="по запросу",
         tags=["самет", "2 дня", "samed villa", "ночевка", "острова", "паттайя"],
     ),
     "samet_2d_samed_pavilion": make_tour(
@@ -216,8 +231,8 @@ TOUR_CATALOG = {
         duration="2 дня",
         travel_time=COMMON_TRAVEL_TIME,
         hotels=["Samed Pavilion"],
-        adult_price="по запросу",
-        child_price="по запросу",
+        price_adult="по запросу",
+        price_child="по запросу",
         tags=["самет", "2 дня", "samed pavilion", "ночевка", "острова", "паттайя"],
     ),
     "samet_transfer": make_tour(
@@ -235,8 +250,8 @@ TOUR_CATALOG = {
         not_included=["проживание", "питание", "личные расходы", "дополнительный транспорт по острову"],
         duration="по датам клиента",
         travel_time=COMMON_TRAVEL_TIME,
-        adult_price="по запросу",
-        child_price="по запросу",
+        price_adult="по запросу",
+        price_child="по запросу",
         what_to_bring=["документы", "багаж", "наличные", "подтверждение брони отеля"],
         tags=["самет", "трансфер", "катер", "острова", "паттайя"],
     ),
@@ -251,8 +266,9 @@ TOUR_CATALOG = {
         not_included=["личные расходы", "дополнительные активности", "напитки и питание сверх программы"],
         duration="1 день",
         travel_time="зависит от маршрута и погодных условий",
-        adult_price="по запросу",
-        child_price="по запросу",
+        price_adult="по запросу",
+        price_child="по запросу",
+        internal_net_price={"adult": 2000, "child": 1700},
         tags=["тропический круиз", "9 островов", "море", "острова", "паттайя"],
     ),
     "chang": make_tour(
@@ -297,30 +313,37 @@ def get_tour(tour_key):
     return TOUR_CATALOG.get(normalize_tour_key(tour_key))
 
 
+def get_public_tour(tour_key):
+    tour = get_tour(tour_key)
+    if not tour:
+        return None
+    return {field: tour[field] for field in PUBLIC_TOUR_FIELDS if field in tour}
+
+
 def format_tour_data(tour):
     """Return only public tour fields for GPT prompts and customer-facing cards."""
+    public_tour = {field: tour[field] for field in PUBLIC_TOUR_FIELDS if field in tour}
     lines = [
-        f"title: {tour['title']}",
-        f"short_description: {tour['short_description']}",
-        f"full_description: {tour['full_description']}",
+        f"title: {public_tour['title']}",
+        f"short_description: {public_tour['short_description']}",
+        f"full_description: {public_tour['full_description']}",
         "included:",
-        *[f"- {item}" for item in tour["included"]],
+        *[f"- {item}" for item in public_tour["included"]],
         "not_included:",
-        *[f"- {item}" for item in tour["not_included"]],
-        f"duration: {tour['duration']}",
-        f"travel_time: {tour['travel_time']}",
+        *[f"- {item}" for item in public_tour["not_included"]],
+        f"duration: {public_tour['duration']}",
+        f"travel_time: {public_tour['travel_time']}",
         "hotels:",
-        *[f"- {hotel}" for hotel in tour["hotels"]],
-        f"adult_price: {tour['adult_price']}",
-        f"child_price: {tour['child_price']}",
-        f"price_from: {tour['price_from']}",
+        *[f"- {hotel}" for hotel in public_tour["hotels"]],
+        f"price_adult: {public_tour['price_adult']}",
+        f"price_child: {public_tour['price_child']}",
         "payment_methods:",
-        *[f"- {method}" for method in tour["payment_methods"]],
-        f"cancellation_policy: {tour['cancellation_policy']}",
+        *[f"- {method}" for method in public_tour["payment_methods"]],
+        f"cancellation_policy: {public_tour['cancellation_policy']}",
         "what_to_bring:",
-        *[f"- {item}" for item in tour["what_to_bring"]],
+        *[f"- {item}" for item in public_tour["what_to_bring"]],
         "tags:",
-        *[f"- {tag}" for tag in tour["tags"]],
+        *[f"- {tag}" for tag in public_tour["tags"]],
     ]
     return "\n".join(lines)
 
@@ -332,7 +355,7 @@ def is_samet_tour(tour_key):
 
 def get_samet_catalog_context():
     return "\n\n".join(
-        format_tour_data(tour)
+        format_tour_data(get_public_tour(tour_key))
         for tour_key, tour in TOUR_CATALOG.items()
         if is_samet_tour(tour_key)
     )
