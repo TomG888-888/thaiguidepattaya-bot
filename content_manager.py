@@ -3,6 +3,7 @@ import logging
 from openai import OpenAI
 
 from ai_manager import OPENAI_API_KEY, OPENAI_MODEL, SYSTEM_PROMPT
+from seasonal_manager import get_seasonal_system_prompt
 
 
 logger = logging.getLogger(__name__)
@@ -17,7 +18,7 @@ def generate_post(topic):
         client = OpenAI(api_key=OPENAI_API_KEY)
         response = client.responses.create(
             model=OPENAI_MODEL,
-            instructions=SYSTEM_PROMPT,
+            instructions=get_seasonal_system_prompt(SYSTEM_PROMPT),
             input=topic,
         )
         return response.output_text.strip()

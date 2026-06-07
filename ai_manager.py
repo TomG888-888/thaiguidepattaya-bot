@@ -3,6 +3,8 @@ import os
 
 from openai import OpenAI
 
+from seasonal_manager import get_seasonal_system_prompt
+
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +28,7 @@ def generate_reply(user_message, history=None):
         messages = history or [{"role": "user", "content": user_message}]
         response = client.responses.create(
             model=OPENAI_MODEL,
-            instructions=SYSTEM_PROMPT,
+            instructions=get_seasonal_system_prompt(SYSTEM_PROMPT),
             input=messages,
         )
         return response.output_text.strip()
