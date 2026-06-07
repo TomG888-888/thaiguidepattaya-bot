@@ -17,6 +17,7 @@ from database import (
     get_message_count,
     get_recent_messages,
     init_db,
+    mark_event_processed,
     update_lead_stage,
     update_lead_status,
 )
@@ -243,6 +244,23 @@ def handle_admin_command(peer_id, text):
     return "Неверный формат команды."
 
 
+def get_event_key(payload, message):
+    event_id = payload.get("event_id")
+    if event_id:
+        return f"event:{event_id}"
+
+    message_id = message.get("id")
+    if message_id:
+        return f"message:{message_id}"
+
+    conversation_message_id = message.get("conversation_message_id")
+    peer_id = message.get("peer_id")
+    if conversation_message_id and peer_id:
+        return f"conversation:{peer_id}:{conversation_message_id}"
+
+    return None
+
+
 def send_vk_message(peer_id, message):
     if not VK_TOKEN:
         app.logger.error("VK_TOKEN is not configured")
@@ -297,6 +315,11 @@ def vk_callback():
 
     if event_type == "message_new":
         message = payload.get("object", {}).get("message", {})
+        event_key = get_event_key(payload, message)
+        if event_key and not mark_event_processed(event_key):
+            app.logger.info("VK duplicate event skipped: %s", event_key)
+            return "ok"
+
         peer_id = message.get("peer_id")
         sender_id = message.get("from_id", peer_id)
         text = message.get("text", "")

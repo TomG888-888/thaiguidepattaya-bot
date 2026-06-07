@@ -73,6 +73,14 @@ def init_postgres_db():
                     CHECK (stage IN ('new', 'qualified', 'offer_sent', 'booked', 'lost'))
                 """
             )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS processed_events (
+                    event_key TEXT PRIMARY KEY,
+                    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
         connection.commit()
 
 
@@ -118,6 +126,14 @@ def init_sqlite_db():
                     CHECK (stage IN ('new', 'qualified', 'offer_sent', 'booked', 'lost'))
                 """
             )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS processed_events (
+                event_key TEXT PRIMARY KEY,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
         connection.commit()
 
 
@@ -149,6 +165,36 @@ def add_message(peer_id, role, content, limit=20):
         )
         connection.commit()
         cursor.close()
+
+
+def mark_event_processed(event_key):
+    param = placeholder()
+
+    with closing(get_connection()) as connection:
+        cursor = connection.cursor()
+        if is_postgres():
+            cursor.execute(
+                """
+                INSERT INTO processed_events (event_key)
+                VALUES (%s)
+                ON CONFLICT (event_key) DO NOTHING
+                """,
+                (event_key,),
+            )
+        else:
+            cursor.execute(
+                f"""
+                INSERT OR IGNORE INTO processed_events (event_key)
+                VALUES ({param})
+                """,
+                (event_key,),
+            )
+
+        connection.commit()
+        inserted = cursor.rowcount > 0
+        cursor.close()
+
+        return inserted
 
 
 def get_message_count(peer_id):
