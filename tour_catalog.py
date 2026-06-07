@@ -209,8 +209,8 @@ TOUR_CATALOG = {
         travel_time=COMMON_TRAVEL_TIME,
         departure="утренний выезд из Паттайи",
         hotels=["Silver Sand Hotel"],
-        price_adult="по запросу",
-        price_child="по запросу",
+        price_adult=2800,
+        price_child=1900,
         tags=["самет", "2 дня", "silver sand", "ночевка", "острова", "паттайя"],
     ),
     "samet_2d_silver_sand_full": make_tour(
