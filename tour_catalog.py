@@ -278,22 +278,20 @@ TOUR_CATALOG = {
             "Программа для тех, кто хочет провести день в формате морского путешествия, "
             "увидеть несколько островов и получить больше впечатлений за одну поездку."
         ),
-        included=["морская программа по 9 островам", "организация маршрута", "сопровождение по программе"],
+        included=[
+            "остановки по маршруту",
+            "обзор островов с лодки",
+            "организация маршрута",
+            "сопровождение по программе",
+        ],
         not_included=["личные расходы", "дополнительные активности", "напитки и питание сверх программы"],
         duration="1 день",
         travel_time="зависит от маршрута и погодных условий",
         departure="07:30–08:00 из Паттайи",
-        route=[
-            "Koh Talu",
-            "Koh Ku Dee",
-            "Koh Kram",
-            "Koh Samet",
-            "Kruai",
-            "Pla Tin",
-            "Klet",
-            "Yung Klua",
-            "Khang Khao",
-        ],
+        route={
+            "stops": ["Koh Talu", "Koh Ku Dee", "Koh Kram", "Koh Samet"],
+            "boat_view": ["Kruai", "Pla Tin", "Klet", "Yung Klua", "Khang Khao"],
+        },
         price_adult="по запросу",
         price_child="по запросу",
         internal_net_price={"adult": 2000, "child": 1700},
@@ -357,7 +355,12 @@ def format_tour_data(tour, include_route=True):
         f"full_description: {public_tour['full_description']}",
     ]
     if include_route and public_tour.get("route"):
-        lines.extend(["route:", *[f"- {item}" for item in public_tour["route"]]])
+        route = public_tour["route"]
+        if isinstance(route, dict):
+            lines.extend(["route:", "stops:", *[f"- {item}" for item in route.get("stops", [])]])
+            lines.extend(["boat_view:", *[f"- {item}" for item in route.get("boat_view", [])]])
+        else:
+            lines.extend(["route:", *[f"- {item}" for item in route]])
 
     lines.extend([
         "included:",

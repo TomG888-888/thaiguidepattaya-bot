@@ -18,6 +18,16 @@ def format_route_block(tour):
     if not route:
         return ""
 
+    if isinstance(route, dict):
+        lines = ["🧭 Маршрут:"]
+        stops = route.get("stops") or []
+        boat_view = route.get("boat_view") or []
+        if stops:
+            lines.extend(["Остановки:", *[f"- {item}" for item in stops]])
+        if boat_view:
+            lines.extend(["Обзор с лодки:", *[f"- {item}" for item in boat_view]])
+        return "\n".join(lines)
+
     return "\n".join(["🧭 Маршрут:", *[f"- {item}" for item in route]])
 
 
@@ -54,6 +64,7 @@ def generate_product_card(tour_key):
         "Показывай только клиентские цены из публичного каталога. Не упоминай "
         "внутренние цены, маржу или условия партнёров.\n"
         "Если в данных есть маршрут, не выводи его сам: маршрут будет добавлен системой отдельно.\n"
+        "Не пиши, что на всех 9 островах есть высадка.\n"
         f"Данные тура:\n{format_tour_data(tour, include_route=False)}\n\n"
         "Строго используй структуру:\n"
         "заголовок\n"
