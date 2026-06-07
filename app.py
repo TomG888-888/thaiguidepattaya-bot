@@ -305,7 +305,7 @@ def handle_admin_command(peer_id, text):
     if text.startswith("/product"):
         parts = text.split()
         if len(parts) != 2:
-            return "Неверный формат команды. Используйте /product samet_1d."
+            return "Неверный формат команды. Используйте /product samet_1d_lunch."
         return generate_admin_product_card(parts[1])
 
     if text.startswith("/publish"):
