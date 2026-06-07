@@ -47,6 +47,39 @@ def add_route_before_included(card_text, tour):
     ).strip()
 
 
+def get_missing_photo_requirements(tour):
+    photos = tour.get("photos") or {}
+    missing_photos = []
+
+    if not photos.get("main"):
+        missing_photos.append("главное фото тура")
+
+    if not photos.get("gallery"):
+        missing_photos.append("фото для галереи")
+
+    if tour.get("hotels") and not photos.get("hotel"):
+        missing_photos.append("фото отеля")
+
+    if tour.get("route") and not photos.get("route"):
+        missing_photos.append("фото маршрута")
+
+    return missing_photos
+
+
+def add_missing_photos_block(card_text, tour):
+    missing_photos = get_missing_photo_requirements(tour)
+    if not missing_photos:
+        return card_text.strip()
+
+    photos_block = "\n".join(["📷 Нужны фото:", *[f"- {item}" for item in missing_photos]])
+    return f"{card_text.strip()}\n\n{photos_block}"
+
+
+def finalize_product_card(card_text, tour):
+    card_with_route = add_route_before_included(card_text, tour)
+    return add_missing_photos_block(card_with_route, tour)
+
+
 def generate_product_card(tour_key):
     normalized_tour_key = normalize_tour_key(tour_key)
     tour = get_public_tour(normalized_tour_key)
@@ -88,7 +121,7 @@ def generate_product_card(tour_key):
             instructions=get_seasonal_system_prompt(SYSTEM_PROMPT),
             input=prompt,
         )
-        return add_route_before_included(response.output_text, tour)
+        return finalize_product_card(response.output_text, tour)
     except Exception:
         logger.exception("OpenAI product card generation failed")
         return None

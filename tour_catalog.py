@@ -6,6 +6,7 @@ PUBLIC_TOUR_FIELDS = (
     "short_description",
     "full_description",
     "route",
+    "photos",
     "included",
     "not_included",
     "duration",
@@ -19,6 +20,24 @@ PUBLIC_TOUR_FIELDS = (
     "what_to_bring",
     "tags",
 )
+DEFAULT_PHOTOS = {
+    "main": "",
+    "gallery": [],
+    "hotel": [],
+    "route": [],
+}
+
+
+def make_photos(photos=None):
+    tour_photos = {
+        "main": DEFAULT_PHOTOS["main"],
+        "gallery": list(DEFAULT_PHOTOS["gallery"]),
+        "hotel": list(DEFAULT_PHOTOS["hotel"]),
+        "route": list(DEFAULT_PHOTOS["route"]),
+    }
+    if photos:
+        tour_photos.update(photos)
+    return tour_photos
 
 
 def make_tour(
@@ -27,6 +46,7 @@ def make_tour(
     full_description,
     included,
     route=None,
+    photos=None,
     not_included=None,
     duration="по запросу",
     travel_time="по запросу",
@@ -45,6 +65,7 @@ def make_tour(
         "short_description": short_description,
         "full_description": full_description,
         "route": route or [],
+        "photos": make_photos(photos),
         "included": included,
         "not_included": not_included or ["личные расходы", "дополнительные активности"],
         "duration": duration,
