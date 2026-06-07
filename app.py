@@ -229,6 +229,35 @@ def format_product_price(tour):
     return format_optional_price(tour.get("price_adult") or tour.get("price_from"))
 
 
+def is_filled_price(price):
+    return price is not None and str(price).strip() != ""
+
+
+def format_price_with_currency(price):
+    if not is_filled_price(price):
+        return "по запросу"
+
+    normalized_price = str(price).strip()
+    normalized_price_lower = normalized_price.lower()
+    if normalized_price_lower == "по запросу" or "бат" in normalized_price_lower or "thb" in normalized_price_lower:
+        return normalized_price
+
+    return f"{normalized_price} бат"
+
+
+def format_product_export_price(tour):
+    price_adult = tour.get("price_adult")
+    price_child = tour.get("price_child")
+
+    if is_filled_price(price_adult):
+        lines = [f"взрослый — {format_price_with_currency(price_adult)}"]
+        if is_filled_price(price_child):
+            lines.append(f"ребёнок — {format_price_with_currency(price_child)}")
+        return "\n".join(lines)
+
+    return format_price_with_currency(tour.get("price_from"))
+
+
 def format_required_photos(tour):
     required_photos = (tour.get("photos") or {}).get("required") or []
     if not required_photos:
@@ -278,7 +307,7 @@ def format_product_export(tour_key):
         f"Товар: {normalized_tour_key}\n\n"
         f"Название товара:\n{tour['title']}\n\n"
         f"Описание товара:\n{format_product_export_description(tour)}\n\n"
-        f"Цена:\n{format_product_price(tour)}\n\n"
+        f"Цена:\n{format_product_export_price(tour)}\n\n"
         f"Required-фото для карточки:\n{format_required_photos(tour)}\n\n"
         f"{format_product_photos(normalized_tour_key)}"
     )
