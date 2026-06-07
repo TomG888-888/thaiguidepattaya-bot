@@ -73,6 +73,7 @@ ADMIN_HELP_TEXT = """Доступные команды:
 /product_export_all
 /product_export_drafts
 /product_photos <tour_key>
+/vk_market_test
 /publish expert
 /publish sales
 /publish story
@@ -482,6 +483,53 @@ def create_vk_market_product(tour_key):
     return f"Товар создан: {product_link}"
 
 
+def test_vk_market_access():
+    if not USER_VK_TOKEN:
+        return "Для автоматического создания товаров нужен USER_VK_TOKEN администратора."
+
+    if not VK_GROUP_ID:
+        return "Не указан VK_GROUP_ID."
+
+    try:
+        group_id = int(VK_GROUP_ID)
+        category_id = int(VK_MARKET_CATEGORY_ID)
+    except ValueError:
+        return "VK_GROUP_ID и VK_MARKET_CATEGORY_ID должны быть числами."
+
+    try:
+        market_response = call_vk_api(
+            "market.get",
+            USER_VK_TOKEN,
+            {
+                "owner_id": -group_id,
+                "count": 1,
+            },
+        )
+        upload_response = call_vk_api(
+            "photos.getMarketUploadServer",
+            USER_VK_TOKEN,
+            {
+                "group_id": group_id,
+                "main_photo": 1,
+            },
+        )
+    except Exception as error:
+        app.logger.exception("VK market test failed")
+        return f"Ошибка vk_market_test: {error}"
+
+    market_count = market_response.get("count") if isinstance(market_response, dict) else "unknown"
+    upload_url_status = "OK" if isinstance(upload_response, dict) and upload_response.get("upload_url") else "MISSING"
+
+    return (
+        "VK Market test:\n"
+        "USER_VK_TOKEN: OK\n"
+        f"VK_GROUP_ID: {group_id}\n"
+        f"VK_MARKET_CATEGORY_ID: {category_id}\n"
+        f"market.get: OK, товаров: {market_count}\n"
+        f"photos.getMarketUploadServer: {upload_url_status}"
+    )
+
+
 def split_export_messages(exports, max_length=3500):
     messages = []
     current_message = ""
@@ -619,6 +667,7 @@ def handle_admin_command(peer_id, text):
             "/post",
             "/product",
             "/publish",
+            "/vk_market_test",
             "/season",
             "/stage",
             "/booked",
@@ -657,6 +706,9 @@ def handle_admin_command(peer_id, text):
         if len(parts) != 2:
             return "Неверный формат команды. Используйте /create_product samet_2d_silver_sand."
         return create_vk_market_product(parts[1])
+
+    if text == "/vk_market_test":
+        return test_vk_market_access()
 
     season_action, season = parse_season_command(text)
     if season_action == "show":
@@ -919,7 +971,9 @@ def vk_callback():
             if admin_reply:
                 reply_peer_id = (
                     sender_id
-                    if text.strip().startswith(("/post", "/product", "/publish", "/create_product", "/photo"))
+                    if text.strip().startswith(
+                        ("/post", "/product", "/publish", "/create_product", "/photo", "/vk_market_test")
+                    )
                     else peer_id
                 )
                 admin_replies = admin_reply if isinstance(admin_reply, list) else [admin_reply]
