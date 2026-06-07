@@ -65,6 +65,7 @@ ADMIN_HELP_TEXT = """Доступные команды:
 /product_export <tour_key>
 /product_export_all
 /product_export_drafts
+/product_photos <tour_key>
 /publish expert
 /publish sales
 /publish story
@@ -236,6 +237,37 @@ def format_required_photos(tour):
     return "\n".join(f"- {item}" for item in required_photos)
 
 
+def get_product_photo_lines(tour):
+    photos = tour.get("photos") or {}
+    cover = photos.get("cover")
+    gallery = photos.get("gallery") or []
+    photo_values = [
+        ("Обложка", cover),
+        ("Галерея 1", gallery[0] if len(gallery) > 0 else ""),
+        ("Галерея 2", gallery[1] if len(gallery) > 1 else ""),
+        ("Галерея 3", gallery[2] if len(gallery) > 2 else ""),
+        ("Галерея 4", gallery[3] if len(gallery) > 3 else ""),
+    ]
+
+    if not all(photo_path for _, photo_path in photo_values):
+        return []
+
+    return [f"{label}: {photo_path}" for label, photo_path in photo_values]
+
+
+def format_product_photos(tour_key):
+    normalized_tour_key = normalize_tour_key(tour_key)
+    tour = get_public_tour(normalized_tour_key)
+    if not tour:
+        return f"Неизвестный тур. Используйте: {AVAILABLE_TOUR_KEYS}."
+
+    photo_lines = get_product_photo_lines(tour)
+    if not photo_lines:
+        return "Фото не заполнены."
+
+    return "\n".join(["Фото:", *photo_lines])
+
+
 def format_product_export(tour_key):
     normalized_tour_key = normalize_tour_key(tour_key)
     tour = get_public_tour(normalized_tour_key)
@@ -247,7 +279,8 @@ def format_product_export(tour_key):
         f"Название товара:\n{tour['title']}\n\n"
         f"Описание товара:\n{format_product_export_description(tour)}\n\n"
         f"Цена:\n{format_product_price(tour)}\n\n"
-        f"Required-фото для карточки:\n{format_required_photos(tour)}"
+        f"Required-фото для карточки:\n{format_required_photos(tour)}\n\n"
+        f"{format_product_photos(normalized_tour_key)}"
     )
 
 
@@ -439,6 +472,12 @@ def handle_admin_command(peer_id, text):
         if len(parts) != 2:
             return "Неверный формат команды. Используйте /product_export samet_1d_lunch."
         return format_product_export(parts[1])
+
+    if text.startswith("/product_photos"):
+        parts = text.split()
+        if len(parts) != 2:
+            return "Неверный формат команды. Используйте /product_photos samet_1d_lunch."
+        return format_product_photos(parts[1])
 
     if text.startswith("/product"):
         parts = text.split()
