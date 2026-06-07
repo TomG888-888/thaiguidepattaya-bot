@@ -1,8 +1,12 @@
+from pathlib import Path
+
 from database import get_lead_status_counts
 from tour_catalog import TOUR_CATALOG
 
 
 PHOTO_SLOT_FALLBACKS = ["обложка", "фото 1", "фото 2", "фото 3", "фото 4"]
+PHOTO_FILENAMES = ["cover.jpg", "gallery_1.jpg", "gallery_2.jpg", "gallery_3.jpg", "gallery_4.jpg"]
+STATIC_TOURS_DIR = Path(__file__).resolve().parent / "static" / "tours"
 
 
 def get_tour_keys_by_status(status):
@@ -13,36 +17,73 @@ def get_tour_keys_by_status(status):
     ]
 
 
-def is_missing_photos(tour):
+def get_static_photo_paths(tour_key):
+    tour_dir = STATIC_TOURS_DIR / tour_key
+    return [tour_dir / filename for filename in PHOTO_FILENAMES]
+
+
+def get_photo_slot_values(tour_key, tour):
     photos = tour.get("photos") or {}
     gallery = photos.get("gallery") or []
-    return not photos.get("cover") or any(
-        gallery_index >= len(gallery) or not gallery[gallery_index]
-        for gallery_index in range(4)
-    )
+    catalog_values = [
+        photos.get("cover"),
+        *[
+            gallery[gallery_index]
+            if gallery_index < len(gallery)
+            else ""
+            for gallery_index in range(4)
+        ],
+    ]
+
+    return [
+        catalog_value or (str(static_path) if static_path.exists() else "")
+        for catalog_value, static_path in zip(catalog_values, get_static_photo_paths(tour_key))
+    ]
 
 
-def get_missing_photo_requirements(tour):
-    if not is_missing_photos(tour):
+def is_missing_photos(tour, tour_key=None):
+    if tour_key is None:
+        photos = tour.get("photos") or {}
+        gallery = photos.get("gallery") or []
+        return not photos.get("cover") or any(
+            gallery_index >= len(gallery) or not gallery[gallery_index]
+            for gallery_index in range(4)
+        )
+
+    photo_slot_values = get_photo_slot_values(tour_key, tour)
+    return any(not photo_value for photo_value in photo_slot_values)
+
+
+def get_missing_photo_requirements(tour, tour_key=None):
+    if not is_missing_photos(tour, tour_key):
         return []
 
     photos = tour.get("photos") or {}
     required_photos = photos.get("required") or []
-    gallery = photos.get("gallery") or []
-    missing_slots = []
-
-    if not photos.get("cover"):
-        missing_slots.append(0)
-
-    for gallery_index in range(4):
-        if gallery_index >= len(gallery) or not gallery[gallery_index]:
-            missing_slots.append(gallery_index + 1)
-
     photo_requirements = required_photos or PHOTO_SLOT_FALLBACKS
+
+    if tour_key is not None:
+        photo_slot_values = get_photo_slot_values(tour_key, tour)
+        return [
+            photo_requirements[slot_index]
+            for slot_index, photo_value in enumerate(photo_slot_values)
+            if not photo_value and slot_index < len(photo_requirements)
+        ][:5]
+
+    gallery = photos.get("gallery") or []
+    catalog_values = [
+        photos.get("cover"),
+        *[
+            gallery[gallery_index]
+            if gallery_index < len(gallery)
+            else ""
+            for gallery_index in range(4)
+        ],
+    ]
     return [
         photo_requirements[slot_index]
-        for slot_index in missing_slots
-        if slot_index < len(photo_requirements)
+        for slot_index, photo_value in enumerate(catalog_values)
+        if not photo_value and slot_index < len(photo_requirements)
     ][:5]
 
 
@@ -107,9 +148,9 @@ def generate_admin_audit():
     active_tours = get_tour_keys_by_status("active")
     draft_tours = get_tour_keys_by_status("draft")
     tours_without_photos = {
-        tour_key: get_missing_photo_requirements(tour)
+        tour_key: get_missing_photo_requirements(tour, tour_key)
         for tour_key, tour in TOUR_CATALOG.items()
-        if tour.get("status") == "active" and get_missing_photo_requirements(tour)
+        if tour.get("status") == "active" and get_missing_photo_requirements(tour, tour_key)
     }
     tours_without_price = [
         tour_key
