@@ -1077,67 +1077,17 @@ def vk_auth_start():
 
 @app.route("/vk/callback")
 def vk_auth_callback():
-    code = request.args.get("code")
-    state = request.args.get("state")
-    device_id = request.args.get("device_id")
+    code = request.args.get("code", "")
+    state = request.args.get("state", "")
+    device_id = request.args.get("device_id", "")
 
-    if not code:
-        return render_oauth_error("VK не вернул code.")
-
-    if not state:
-        return render_oauth_error("VK не вернул state.")
-
-    cleanup_pkce_states()
-    state_data = PKCE_STATES.pop(state, None)
-    if not state_data:
-        return render_oauth_error("state не найден или истек. Запустите авторизацию заново.")
-
-    if not VK_APP_ID:
-        return render_oauth_error("VK_APP_ID не настроен в ENV.")
-
-    if not VK_REDIRECT_URI:
-        return render_oauth_error("VK_REDIRECT_URI не настроен в ENV.")
-
-    data = {
-        "grant_type": "authorization_code",
-        "code": code,
-        "client_id": VK_APP_ID,
-        "redirect_uri": VK_REDIRECT_URI,
-        "code_verifier": state_data["code_verifier"],
-    }
-    if device_id:
-        data["device_id"] = device_id
-
-    try:
-        response = requests.post(
-            "https://id.vk.ru/oauth2/auth",
-            data=data,
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
-            timeout=15,
-        )
-        response.raise_for_status()
-    except requests.RequestException as error:
-        app.logger.exception("VK OAuth token exchange request failed")
-        return render_oauth_error(str(error))
-
-    try:
-        result = response.json()
-    except ValueError:
-        app.logger.error("VK OAuth token exchange returned non-JSON response")
-        return render_oauth_error("VK вернул не-JSON ответ при обмене code.")
-
-    if "error" in result:
-        error_text = result.get("error_description") or result.get("error") or "unknown_error"
-        app.logger.error("VK OAuth token exchange error: %s", error_text)
-        return render_oauth_error(error_text)
-
-    access_token = result.get("access_token")
-    if not access_token:
-        app.logger.error("VK OAuth token exchange response without access_token")
-        return render_oauth_error("VK не вернул access_token.")
-
-    app.logger.info("VK OAuth USER_VK_TOKEN received successfully")
-    return render_token_page(access_token)
+    return Response(
+        "VK CALLBACK OK\n\n"
+        f"code={code}\n"
+        f"state={state}\n"
+        f"device_id={device_id}",
+        mimetype="text/plain",
+    )
 
 
 @app.route("/vk", methods=["POST"])
