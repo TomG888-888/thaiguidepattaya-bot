@@ -22,7 +22,7 @@ from database import (
     update_lead_stage,
     update_lead_status,
 )
-from product_manager import generate_product_card
+from product_manager import AVAILABLE_TOUR_KEYS, generate_product_card
 from seasonal_manager import get_current_season, init_current_season, set_current_season
 
 
@@ -155,7 +155,7 @@ def generate_admin_post(post_type):
 def generate_admin_product_card(tour_key):
     product_card = generate_product_card(tour_key)
     if not product_card:
-        return "Не удалось сгенерировать карточку. Используйте: samet, chang, bangkok, nongnooch, khao_kheow."
+        return f"Не удалось сгенерировать карточку. Используйте: {AVAILABLE_TOUR_KEYS}."
 
     return product_card
 
@@ -305,7 +305,7 @@ def handle_admin_command(peer_id, text):
     if text.startswith("/product"):
         parts = text.split()
         if len(parts) != 2:
-            return "Неверный формат команды. Используйте /product samet."
+            return "Неверный формат команды. Используйте /product samet_1d."
         return generate_admin_product_card(parts[1])
 
     if text.startswith("/publish"):
