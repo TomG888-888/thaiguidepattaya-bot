@@ -83,6 +83,7 @@ ADMIN_HELP_TEXT = """Доступные команды:
 /photo_audit
 /photo_export <tour_key>
 /stats
+/tours
 /leads
 /create_product <tour_key>
 /post expert
@@ -1044,6 +1045,24 @@ def format_draft_product_exports():
     return format_product_exports_by_status("draft")
 
 
+def format_tours_list():
+    lines = ["Туры:"]
+    for tour_key, tour in sorted(TOUR_CATALOG.items()):
+        photo_status = (
+            "OK"
+            if all(photo_path.exists() for _, photo_path in get_product_pack_photo_slots(tour_key))
+            else "MISSING"
+        )
+        lines.append(
+            f"{tour_key}\n"
+            f"{tour['title']}\n"
+            f"Цена: {format_product_export_price(tour)}\n"
+            f"Фото: {photo_status}"
+        )
+
+    return "\n\n".join(lines)
+
+
 def publish_scheduled_post(post_type):
     app.logger.info("Scheduled post started: %s", post_type)
 
@@ -1137,6 +1156,7 @@ def handle_admin_command(peer_id, text):
             "/photo_audit",
             "/photo_export",
             "/stats",
+            "/tours",
             "/leads",
             "/create_product",
             "/post",
@@ -1191,6 +1211,9 @@ def handle_admin_command(peer_id, text):
 
     if text == "/stats":
         return format_lead_stats()
+
+    if text == "/tours":
+        return format_tours_list()
 
     if text == "/leads":
         return format_leads()
