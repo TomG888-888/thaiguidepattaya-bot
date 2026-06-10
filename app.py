@@ -97,6 +97,7 @@ ADMIN_HELP_TEXT = """Доступные команды:
 /publish_queue
 /all_products_zip
 /leads
+/lead_text <tour_key>
 /create_product <tour_key>
 /post expert
 /post sales
@@ -478,6 +479,47 @@ def format_product_pack_text(tour):
         f"Отправление:\n{tour.get('departure') or 'уточняется при бронировании'}\n\n"
         f"Что взять с собой:\n"
         f"{chr(10).join(f'- {item}' for item in tour['what_to_bring'])}"
+    )
+
+
+def get_short_lead_description(tour):
+    description_parts = [
+        str(tour.get("short_description") or "").strip(),
+        str(tour.get("full_description") or "").strip(),
+    ]
+    lines = []
+    for description in description_parts:
+        for line in description.splitlines():
+            clean_line = line.strip()
+            if clean_line:
+                lines.append(clean_line)
+
+    if not lines:
+        return "Подробности уточню под ваши даты и формат отдыха."
+
+    return "\n".join(lines[:4])
+
+
+def format_lead_text(tour_key):
+    normalized_tour_key = normalize_tour_key(tour_key)
+    tour = get_public_tour(normalized_tour_key)
+    if not tour:
+        return f"Неизвестный тур. Используйте: {AVAILABLE_TOUR_KEYS}."
+
+    included = tour.get("included") or []
+    included_text = "\n".join(f"- {item}" for item in included) if included else "- уточняется при бронировании"
+
+    return (
+        f"🏝 {tour['title']}\n\n"
+        f"Цена: {format_product_export_price(tour)}\n"
+        f"Длительность: {tour['duration']}\n"
+        f"Отправление: {tour.get('departure') or 'уточняется при бронировании'}\n\n"
+        f"Что включено:\n{included_text}\n\n"
+        f"Коротко:\n{get_short_lead_description(tour)}\n\n"
+        "Для бронирования напишите:\n"
+        "- дата\n"
+        "- количество человек\n"
+        "- отель"
     )
 
 
@@ -1539,6 +1581,7 @@ def handle_admin_command(peer_id, text):
             "/publish_queue",
             "/all_products_zip",
             "/leads",
+            "/lead_text",
             "/create_product",
             "/post",
             "/product",
@@ -1631,6 +1674,12 @@ def handle_admin_command(peer_id, text):
 
     if text == "/leads":
         return format_leads()
+
+    if text.startswith("/lead_text"):
+        parts = text.split()
+        if len(parts) != 2:
+            return "Неверный формат команды. Используйте /lead_text samet_1d_lunch."
+        return format_lead_text(parts[1])
 
     if text.startswith("/create_product"):
         parts = text.split()
