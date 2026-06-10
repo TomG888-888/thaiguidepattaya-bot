@@ -91,6 +91,7 @@ ADMIN_HELP_TEXT = """Доступные команды:
 /published
 /not_published
 /mark_published <tour_key>
+/publish_queue
 /leads
 /create_product <tour_key>
 /post expert
@@ -1152,6 +1153,84 @@ def mark_catalog_tour_published(tour_key):
     return f"✅ Published: {normalized_tour_key}"
 
 
+def has_publishable_price(tour):
+    price = format_product_export_price(tour).strip().lower()
+    return bool(price) and "по запросу" not in price
+
+
+def get_publish_queue_reasons(tour_key, tour):
+    reasons = []
+    missing_photos = get_missing_product_photo_filenames(tour_key)
+    reasons.extend(f"нет фото: {filename}" for filename in missing_photos)
+
+    if not str(tour.get("title") or "").strip():
+        reasons.append("нет названия")
+
+    if not has_publishable_price(tour):
+        reasons.append("нет цены")
+
+    if not str(tour.get("short_description") or tour.get("full_description") or "").strip():
+        reasons.append("нет описания")
+
+    return reasons
+
+
+def format_publish_queue_tour(tour_key, tour, status):
+    return (
+        f"{tour_key}\n"
+        f"{tour.get('title') or 'нет названия'}\n"
+        f"Цена: {format_product_export_price(tour)}\n"
+        f"{status}"
+    )
+
+
+def format_publish_queue():
+    published_tours = get_published_tours()
+    published_map = {
+        published_tour["tour_key"]: published_tour["published_at"]
+        for published_tour in published_tours
+    }
+    ready = []
+    not_ready = []
+    published = []
+
+    for tour_key, tour in sorted(TOUR_CATALOG.items()):
+        if tour_key in published_map:
+            published.append(
+                format_publish_queue_tour(
+                    tour_key,
+                    tour,
+                    f"published_at: {published_map[tour_key]}",
+                )
+            )
+            continue
+
+        reasons = get_publish_queue_reasons(tour_key, tour)
+        if reasons:
+            not_ready.append(
+                format_publish_queue_tour(
+                    tour_key,
+                    tour,
+                    "Причины:\n" + "\n".join(f"- {reason}" for reason in reasons),
+                )
+            )
+        else:
+            ready.append(format_publish_queue_tour(tour_key, tour, "Готов к публикации"))
+
+    return "\n\n".join(
+        [
+            "✅ ГОТОВЫ К ПУБЛИКАЦИИ",
+            "\n\n".join(ready) if ready else "Нет",
+            "",
+            "⚠️ НЕ ГОТОВЫ",
+            "\n\n".join(not_ready) if not_ready else "Нет",
+            "",
+            "📌 УЖЕ ОПУБЛИКОВАНЫ",
+            "\n\n".join(published) if published else "Нет",
+        ]
+    )
+
+
 def publish_scheduled_post(post_type):
     app.logger.info("Scheduled post started: %s", post_type)
 
@@ -1250,6 +1329,7 @@ def handle_admin_command(peer_id, text):
             "/published",
             "/not_published",
             "/mark_published",
+            "/publish_queue",
             "/leads",
             "/create_product",
             "/post",
@@ -1325,6 +1405,9 @@ def handle_admin_command(peer_id, text):
         if len(parts) != 2:
             return "Неверный формат команды. Используйте /mark_published samet_1d_lunch."
         return mark_catalog_tour_published(parts[1])
+
+    if text == "/publish_queue":
+        return format_publish_queue()
 
     if text == "/leads":
         return format_leads()
