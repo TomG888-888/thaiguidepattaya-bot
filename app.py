@@ -88,6 +88,7 @@ ADMIN_HELP_TEXT = """Доступные команды:
 /photo_audit
 /photo_export <tour_key>
 /stats
+/tour_stats
 /tours
 /tour_preview <tour_key>
 /published
@@ -1350,6 +1351,43 @@ def format_tours_audit():
     return "\n\n".join(report_blocks)
 
 
+def format_tour_stats():
+    total_count = len(TOUR_CATALOG)
+    published_count = len(get_published_tour_keys())
+    ready_count = len(get_publish_ready_tours())
+    not_ready_count = max(total_count - published_count - ready_count, 0)
+
+    without_cover_count = sum(
+        1
+        for tour_key in TOUR_CATALOG
+        if (BASE_DIR / "static" / "tours" / tour_key / "cover.jpg").exists() is False
+    )
+    without_price_count = sum(
+        1
+        for tour in TOUR_CATALOG.values()
+        if is_missing_or_zero_price(
+            tour.get("price_adult") if not is_empty_value(tour.get("price_adult")) else tour.get("price_from")
+        )
+    )
+    without_description_count = sum(
+        1
+        for tour in TOUR_CATALOG.values()
+        if is_empty_value(tour.get("short_description")) and is_empty_value(tour.get("full_description"))
+    )
+
+    return (
+        "📊 Статистика туров\n\n"
+        f"Всего: {total_count}\n"
+        f"Готовы к публикации: {ready_count}\n"
+        f"Не готовы: {not_ready_count}\n"
+        f"Опубликованы: {published_count}\n\n"
+        "Проблемы:\n"
+        f"- без cover.jpg: {without_cover_count}\n"
+        f"- без цены: {without_price_count}\n"
+        f"- без описания: {without_description_count}"
+    )
+
+
 CRITICAL_FIX_PROBLEMS = {
     "нет названия",
     "нет цены",
@@ -1492,6 +1530,7 @@ def handle_admin_command(peer_id, text):
             "/photo_audit",
             "/photo_export",
             "/stats",
+            "/tour_stats",
             "/tour_preview",
             "/tours",
             "/published",
@@ -1559,6 +1598,9 @@ def handle_admin_command(peer_id, text):
 
     if text == "/stats":
         return format_lead_stats()
+
+    if text == "/tour_stats":
+        return format_tour_stats()
 
     if text.startswith("/tour_preview"):
         parts = text.split()
