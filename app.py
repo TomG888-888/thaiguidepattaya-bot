@@ -88,6 +88,7 @@ ADMIN_HELP_TEXT = """Доступные команды:
 /product_export <tour_key>
 /product_export_all
 /product_export_drafts
+/product_pack <tour_key>
 /product_photos <tour_key>
 /vk_auth_link
 /vk_token_debug
@@ -442,6 +443,57 @@ def format_product_export(tour_key):
         f"Описание товара:\n{format_product_export_description(tour)}\n\n"
         f"Цена:\n{format_product_export_price(tour)}"
     )
+
+
+def format_product_pack_text(tour):
+    not_included = tour.get("not_included") or []
+    return (
+        f"Название товара:\n{tour['title']}\n\n"
+        f"Цена:\n{format_product_export_price(tour)}\n\n"
+        f"Описание:\n{tour['short_description']}\n\n{tour['full_description']}\n\n"
+        f"Что включено:\n"
+        f"{chr(10).join(f'- {item}' for item in tour['included'])}\n\n"
+        f"Что не включено:\n"
+        f"{chr(10).join(f'- {item}' for item in not_included) if not_included else 'уточняется при бронировании'}\n\n"
+        f"Длительность:\n{tour['duration']}\n\n"
+        f"Отправление:\n{tour.get('departure') or 'уточняется при бронировании'}\n\n"
+        f"Что взять с собой:\n"
+        f"{chr(10).join(f'- {item}' for item in tour['what_to_bring'])}"
+    )
+
+
+def get_product_pack_photo_slots(tour_key):
+    normalized_tour_key = normalize_tour_key(tour_key)
+    photo_dir = BASE_DIR / "static" / "tours" / normalized_tour_key
+    return [
+        ("cover.jpg", photo_dir / "cover.jpg"),
+        ("gallery_1.jpg", photo_dir / "gallery_1.jpg"),
+        ("gallery_2.jpg", photo_dir / "gallery_2.jpg"),
+        ("gallery_3.jpg", photo_dir / "gallery_3.jpg"),
+        ("gallery_4.jpg", photo_dir / "gallery_4.jpg"),
+    ]
+
+
+def format_product_pack(tour_key):
+    normalized_tour_key = normalize_tour_key(tour_key)
+    tour = get_public_tour(normalized_tour_key)
+    if not tour:
+        return f"Неизвестный тур. Используйте: {AVAILABLE_TOUR_KEYS}."
+
+    pack = [{"type": "text", "text": format_product_pack_text(tour)}]
+    for filename, photo_path in get_product_pack_photo_slots(normalized_tour_key):
+        if photo_path.exists():
+            pack.append(
+                {
+                    "type": "photo",
+                    "path": str(photo_path),
+                    "label": filename,
+                }
+            )
+        else:
+            pack.append({"type": "text", "text": f"{filename}: MISSING"})
+
+    return pack
 
 
 def safe_format_product_export(tour_key):
@@ -953,6 +1005,12 @@ def handle_admin_command(peer_id, text):
             return "Неверный формат команды. Используйте /product_export samet_1d_lunch."
         return safe_format_product_export(parts[1])
 
+    if text.startswith("/product_pack"):
+        parts = text.split()
+        if len(parts) != 2:
+            return "Неверный формат команды. Используйте /product_pack samet_1d_lunch."
+        return format_product_pack(parts[1])
+
     if text.startswith("/product_photos"):
         parts = text.split()
         if len(parts) != 2:
@@ -1047,6 +1105,89 @@ def send_vk_message(peer_id, message):
         return False
 
     app.logger.info("VK messages.send success: peer_id=%s, response=%s", peer_id, result.get("response"))
+    return True
+
+
+def send_vk_photo_message(peer_id, photo_path):
+    if not VK_TOKEN:
+        app.logger.error("VK_TOKEN is not configured")
+        return False
+
+    photo_path = Path(photo_path)
+    if not photo_path.exists():
+        app.logger.error("VK photo path does not exist: %s", photo_path)
+        return False
+
+    try:
+        upload_server = call_vk_api(
+            "photos.getMessagesUploadServer",
+            VK_TOKEN,
+            {"peer_id": peer_id},
+        )
+        upload_url = upload_server.get("upload_url") if isinstance(upload_server, dict) else None
+        if not upload_url:
+            app.logger.error("VK messages photo upload_url is missing")
+            return False
+
+        with photo_path.open("rb") as photo_file:
+            upload_response = requests.post(
+                upload_url,
+                files={"photo": (photo_path.name, photo_file, "image/jpeg")},
+                timeout=30,
+            )
+        upload_response.raise_for_status()
+        upload_result = upload_response.json()
+
+        saved_photos = call_vk_api(
+            "photos.saveMessagesPhoto",
+            VK_TOKEN,
+            upload_result,
+        )
+    except requests.RequestException:
+        app.logger.exception("VK photo upload request failed: %s", photo_path)
+        return False
+    except ValueError:
+        app.logger.exception("VK photo upload returned non-JSON response: %s", photo_path)
+        return False
+    except Exception:
+        app.logger.exception("VK photo send failed: %s", photo_path)
+        return False
+
+    photo = saved_photos[0] if isinstance(saved_photos, list) and saved_photos else None
+    if not isinstance(photo, dict) or not photo.get("owner_id") or not photo.get("id"):
+        app.logger.error("VK saveMessagesPhoto response without photo id: %s", saved_photos)
+        return False
+
+    attachment = f"photo{photo['owner_id']}_{photo['id']}"
+    if photo.get("access_key"):
+        attachment = f"{attachment}_{photo['access_key']}"
+
+    try:
+        response = requests.post(
+            "https://api.vk.com/method/messages.send",
+            data={
+                "access_token": VK_TOKEN,
+                "v": VK_API_VERSION,
+                "peer_id": peer_id,
+                "attachment": attachment,
+                "random_id": random.randint(1, 2_147_483_647),
+            },
+            timeout=10,
+        )
+        response.raise_for_status()
+        result = response.json()
+    except requests.RequestException:
+        app.logger.exception("VK photo messages.send request failed: %s", photo_path)
+        return False
+    except ValueError:
+        app.logger.exception("VK photo messages.send returned non-JSON response: %s", photo_path)
+        return False
+
+    if "error" in result:
+        app.logger.error("VK photo messages.send error: %s", result["error"])
+        return False
+
+    app.logger.info("VK photo messages.send success: peer_id=%s, photo=%s", peer_id, photo_path.name)
     return True
 
 
@@ -1291,8 +1432,13 @@ def vk_callback():
                 )
                 admin_replies = admin_reply if isinstance(admin_reply, list) else [admin_reply]
                 for reply_part in admin_replies:
-                    if send_vk_message(reply_peer_id, reply_part):
-                        add_message(peer_id, "assistant", reply_part)
+                    if isinstance(reply_part, dict) and reply_part.get("type") == "photo":
+                        if send_vk_photo_message(reply_peer_id, reply_part["path"]):
+                            add_message(peer_id, "assistant", f"photo:{reply_part['label']}")
+                    else:
+                        message_text = reply_part.get("text") if isinstance(reply_part, dict) else reply_part
+                        if send_vk_message(reply_peer_id, message_text):
+                            add_message(peer_id, "assistant", message_text)
             elif is_first_message:
                 if send_vk_message(peer_id, AUTO_REPLY_TEXT):
                     add_message(peer_id, "assistant", AUTO_REPLY_TEXT)
