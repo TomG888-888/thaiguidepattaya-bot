@@ -99,6 +99,7 @@ ADMIN_HELP_TEXT = """Доступные команды:
 /leads
 /lead_text <tour_key>
 /lead_pack <tour_key>
+/find_tour <query>
 /create_product <tour_key>
 /post expert
 /post sales
@@ -1173,6 +1174,41 @@ def format_tours_list():
     return "\n\n".join(lines)
 
 
+def format_find_tour_results(query):
+    normalized_query = query.strip().lower()
+    if not normalized_query:
+        return "Неверный формат команды. Используйте /find_tour samet."
+
+    published_keys = get_published_tour_keys()
+    results = []
+    for tour_key, tour in sorted(TOUR_CATALOG.items()):
+        searchable_text = "\n".join(
+            [
+                tour_key,
+                str(tour.get("title") or ""),
+                str(tour.get("short_description") or ""),
+                str(tour.get("full_description") or ""),
+            ]
+        ).lower()
+        if normalized_query not in searchable_text:
+            continue
+
+        photo_status = "OK" if not get_missing_product_photo_filenames(tour_key) else "MISSING"
+        publication_status = "Published" if tour_key in published_keys else "Not published"
+        results.append(
+            f"{tour_key}\n"
+            f"{tour.get('title') or 'нет названия'}\n"
+            f"Цена: {format_product_export_price(tour)}\n"
+            f"Фото: {photo_status}\n"
+            f"Публикация: {publication_status}"
+        )
+
+    if not results:
+        return "Ничего не найдено."
+
+    return "\n\n".join(results)
+
+
 def format_published_tours():
     published_tours = get_published_tours()
     if not published_tours:
@@ -1606,6 +1642,7 @@ def handle_admin_command(peer_id, text):
             "/leads",
             "/lead_text",
             "/lead_pack",
+            "/find_tour",
             "/create_product",
             "/post",
             "/product",
@@ -1710,6 +1747,12 @@ def handle_admin_command(peer_id, text):
         if len(parts) != 2:
             return "Неверный формат команды. Используйте /lead_pack samet_1d_lunch."
         return format_lead_pack(parts[1])
+
+    if text.startswith("/find_tour"):
+        parts = text.split(maxsplit=1)
+        if len(parts) != 2:
+            return "Неверный формат команды. Используйте /find_tour samet."
+        return format_find_tour_results(parts[1])
 
     if text.startswith("/create_product"):
         parts = text.split()
