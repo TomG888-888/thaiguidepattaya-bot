@@ -7,8 +7,10 @@ import base64
 import hashlib
 import html
 import secrets
+import tempfile
 import time
 from urllib.parse import urlencode
+import zipfile
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from flask import Flask, Response, jsonify, redirect, request
@@ -49,6 +51,8 @@ VK_APP_ID = os.getenv("VK_APP_ID")
 VK_REDIRECT_URI = os.getenv("VK_REDIRECT_URI")
 PUBLIC_BACKEND_URL = os.getenv("PUBLIC_BACKEND_URL")
 ADMIN_ID = os.getenv("ADMIN_ID")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 AUTO_POSTING_ENABLED = os.getenv("AUTO_POSTING_ENABLED", "false").lower() == "true"
 VK_CONFIRMATION_RESPONSE = "dfe8da6d"
 VK_API_VERSION = "5.199"
@@ -90,6 +94,7 @@ ADMIN_HELP_TEXT = """Доступные команды:
 /product_export_drafts
 /product_pack <tour_key>
 /product_photos <tour_key>
+/product_zip <tour_key>
 /vk_auth_link
 /vk_token_debug
 /vk_market_test
@@ -494,6 +499,82 @@ def format_product_pack(tour_key):
             pack.append({"type": "text", "text": f"{filename}: MISSING"})
 
     return pack
+
+
+def create_product_zip(tour_key, zip_dir):
+    normalized_tour_key = normalize_tour_key(tour_key)
+    tour = get_public_tour(normalized_tour_key)
+    if not tour:
+        return None, f"Неизвестный тур. Используйте: {AVAILABLE_TOUR_KEYS}."
+
+    zip_path = Path(zip_dir) / f"product_{normalized_tour_key}.zip"
+    product_text_lines = [format_product_pack_text(tour)]
+    photo_slots = get_product_pack_photo_slots(normalized_tour_key)
+
+    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for filename, photo_path in photo_slots:
+            if photo_path.exists():
+                archive.write(photo_path, arcname=filename)
+            else:
+                product_text_lines.append(f"MISSING: {filename}")
+
+        archive.writestr("product.txt", "\n\n".join(product_text_lines))
+
+    return zip_path, None
+
+
+def sanitize_telegram_error(value):
+    text = str(value)
+    if TELEGRAM_BOT_TOKEN:
+        text = text.replace(TELEGRAM_BOT_TOKEN, "[hidden_telegram_token]")
+    return text
+
+
+def send_telegram_document(document_path, caption=None):
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        return False, "TELEGRAM_BOT_TOKEN или TELEGRAM_CHAT_ID не настроены."
+
+    try:
+        with Path(document_path).open("rb") as document:
+            response = requests.post(
+                f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendDocument",
+                data={
+                    "chat_id": TELEGRAM_CHAT_ID,
+                    "caption": caption or "",
+                },
+                files={
+                    "document": (Path(document_path).name, document, "application/zip"),
+                },
+                timeout=30,
+            )
+        response.raise_for_status()
+        result = response.json()
+    except requests.RequestException as error:
+        app.logger.exception("Telegram sendDocument request failed")
+        return False, f"Ошибка Telegram sendDocument: {sanitize_telegram_error(error)}"
+    except ValueError:
+        app.logger.exception("Telegram sendDocument returned non-JSON response")
+        return False, "Telegram вернул не-JSON ответ."
+
+    if not result.get("ok"):
+        app.logger.error("Telegram sendDocument error: %s", result)
+        return False, f"Telegram error: {result.get('description') or result}"
+
+    return True, "ZIP отправлен в Telegram."
+
+
+def send_product_zip(tour_key):
+    normalized_tour_key = normalize_tour_key(tour_key)
+    with tempfile.TemporaryDirectory() as temp_dir:
+        zip_path, error = create_product_zip(normalized_tour_key, temp_dir)
+        if error:
+            return error
+
+        ok, message = send_telegram_document(
+            zip_path,
+            caption=f"Product ZIP: {normalized_tour_key}",
+        )
+        return message if ok else message
 
 
 def safe_format_product_export(tour_key):
@@ -1010,6 +1091,12 @@ def handle_admin_command(peer_id, text):
         if len(parts) != 2:
             return "Неверный формат команды. Используйте /product_pack samet_1d_lunch."
         return format_product_pack(parts[1])
+
+    if text.startswith("/product_zip"):
+        parts = text.split()
+        if len(parts) != 2:
+            return "Неверный формат команды. Используйте /product_zip samet_1d_lunch."
+        return send_product_zip(parts[1])
 
     if text.startswith("/product_photos"):
         parts = text.split()
