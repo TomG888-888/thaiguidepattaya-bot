@@ -25,8 +25,11 @@ from database import (
     get_leads,
     get_lead_status_counts,
     get_message_count,
+    get_published_tour_keys,
+    get_published_tours,
     get_recent_messages,
     init_db,
+    mark_tour_published,
     mark_event_processed,
     update_lead_stage,
     update_lead_status,
@@ -85,6 +88,9 @@ ADMIN_HELP_TEXT = """Доступные команды:
 /stats
 /tours
 /tour_preview <tour_key>
+/published
+/not_published
+/mark_published <tour_key>
 /leads
 /create_product <tour_key>
 /post expert
@@ -1097,6 +1103,55 @@ def format_tours_list():
     return "\n\n".join(lines)
 
 
+def format_published_tours():
+    published_tours = get_published_tours()
+    if not published_tours:
+        return "Опубликованных туров пока нет."
+
+    lines = ["Опубликованные туры:"]
+    for published_tour in published_tours:
+        tour_key = published_tour["tour_key"]
+        tour = get_public_tour(tour_key)
+        title = tour["title"] if tour else "(нет в каталоге)"
+        lines.append(
+            f"{tour_key}\n"
+            f"{title}\n"
+            f"{published_tour['published_at']}"
+        )
+
+    return "\n\n".join(lines)
+
+
+def format_not_published_tours():
+    published_keys = get_published_tour_keys()
+    lines = ["Неопубликованные туры:"]
+    for tour_key, tour in sorted(TOUR_CATALOG.items()):
+        if tour_key in published_keys:
+            continue
+
+        photo_status = "OK" if not get_missing_product_photo_filenames(tour_key) else "MISSING"
+        lines.append(
+            f"{tour_key}\n"
+            f"{tour['title']}\n"
+            f"Цена: {format_product_export_price(tour)}\n"
+            f"Фото: {photo_status}"
+        )
+
+    if len(lines) == 1:
+        return "Все туры опубликованы."
+
+    return "\n\n".join(lines)
+
+
+def mark_catalog_tour_published(tour_key):
+    normalized_tour_key = normalize_tour_key(tour_key)
+    if not get_public_tour(normalized_tour_key):
+        return f"Неизвестный тур. Используйте: {AVAILABLE_TOUR_KEYS}."
+
+    mark_tour_published(normalized_tour_key)
+    return f"✅ Published: {normalized_tour_key}"
+
+
 def publish_scheduled_post(post_type):
     app.logger.info("Scheduled post started: %s", post_type)
 
@@ -1192,6 +1247,9 @@ def handle_admin_command(peer_id, text):
             "/stats",
             "/tour_preview",
             "/tours",
+            "/published",
+            "/not_published",
+            "/mark_published",
             "/leads",
             "/create_product",
             "/post",
@@ -1255,6 +1313,18 @@ def handle_admin_command(peer_id, text):
 
     if text == "/tours":
         return format_tours_list()
+
+    if text == "/published":
+        return format_published_tours()
+
+    if text == "/not_published":
+        return format_not_published_tours()
+
+    if text.startswith("/mark_published"):
+        parts = text.split()
+        if len(parts) != 2:
+            return "Неверный формат команды. Используйте /mark_published samet_1d_lunch."
+        return mark_catalog_tour_published(parts[1])
 
     if text == "/leads":
         return format_leads()

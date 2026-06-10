@@ -90,6 +90,27 @@ def init_postgres_db():
                 )
                 """
             )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS tours (
+                    tour_key TEXT PRIMARY KEY,
+                    is_published BOOLEAN NOT NULL DEFAULT FALSE,
+                    published_at TIMESTAMPTZ
+                )
+                """
+            )
+            cursor.execute(
+                """
+                ALTER TABLE tours
+                ADD COLUMN IF NOT EXISTS is_published BOOLEAN NOT NULL DEFAULT FALSE
+                """
+            )
+            cursor.execute(
+                """
+                ALTER TABLE tours
+                ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ
+                """
+            )
         connection.commit()
 
 
@@ -152,6 +173,31 @@ def init_sqlite_db():
             )
             """
         )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS tours (
+                tour_key TEXT PRIMARY KEY,
+                is_published INTEGER NOT NULL DEFAULT 0,
+                published_at TIMESTAMP
+            )
+            """
+        )
+        cursor = connection.execute("PRAGMA table_info(tours)")
+        columns = {row[1] for row in cursor.fetchall()}
+        if "is_published" not in columns:
+            connection.execute(
+                """
+                ALTER TABLE tours
+                ADD COLUMN is_published INTEGER NOT NULL DEFAULT 0
+                """
+            )
+        if "published_at" not in columns:
+            connection.execute(
+                """
+                ALTER TABLE tours
+                ADD COLUMN published_at TIMESTAMP
+                """
+            )
         connection.commit()
 
 
@@ -264,6 +310,69 @@ def set_setting(key, value):
             )
         connection.commit()
         cursor.close()
+
+
+def mark_tour_published(tour_key):
+    param = placeholder()
+
+    with closing(get_connection()) as connection:
+        cursor = connection.cursor()
+        if is_postgres():
+            cursor.execute(
+                """
+                INSERT INTO tours (tour_key, is_published, published_at)
+                VALUES (%s, TRUE, CURRENT_TIMESTAMP)
+                ON CONFLICT (tour_key)
+                DO UPDATE SET is_published = TRUE, published_at = CURRENT_TIMESTAMP
+                """,
+                (tour_key,),
+            )
+        else:
+            cursor.execute(
+                f"""
+                INSERT INTO tours (tour_key, is_published, published_at)
+                VALUES ({param}, 1, CURRENT_TIMESTAMP)
+                ON CONFLICT(tour_key)
+                DO UPDATE SET is_published = 1, published_at = CURRENT_TIMESTAMP
+                """,
+                (tour_key,),
+            )
+        connection.commit()
+        cursor.close()
+
+
+def get_published_tours():
+    with closing(get_connection()) as connection:
+        cursor = connection.cursor()
+        cursor.execute(
+            """
+            SELECT tour_key, published_at
+            FROM tours
+            WHERE is_published = TRUE
+            ORDER BY published_at DESC, tour_key ASC
+            """
+            if is_postgres()
+            else """
+            SELECT tour_key, published_at
+            FROM tours
+            WHERE is_published = 1
+            ORDER BY published_at DESC, tour_key ASC
+            """
+        )
+        rows = cursor.fetchall()
+        cursor.close()
+
+        return [
+            {
+                "tour_key": tour_key,
+                "published_at": published_at,
+            }
+            for tour_key, published_at in rows
+        ]
+
+
+def get_published_tour_keys():
+    return {tour["tour_key"] for tour in get_published_tours()}
 
 
 def get_message_count(peer_id):
