@@ -84,6 +84,7 @@ ADMIN_HELP_TEXT = """Доступные команды:
 /help
 /admin_audit
 /audit_tours
+/fix_queue
 /photo_audit
 /photo_export <tour_key>
 /stats
@@ -1349,6 +1350,53 @@ def format_tours_audit():
     return "\n\n".join(report_blocks)
 
 
+CRITICAL_FIX_PROBLEMS = {
+    "нет названия",
+    "нет цены",
+    "нет описания",
+    "нет cover.jpg",
+}
+
+SUPPLEMENT_FIX_PROBLEMS = {
+    "нет включено",
+    "нет не включено",
+    "нет длительности",
+    "нет места отправления",
+    "нет что взять с собой",
+    "нет gallery_1.jpg",
+    "нет gallery_2.jpg",
+    "нет gallery_3.jpg",
+    "нет gallery_4.jpg",
+}
+
+
+def format_fix_queue():
+    report_blocks = []
+    for tour_key, tour in sorted(TOUR_CATALOG.items()):
+        problems = get_tour_audit_problems(tour_key, tour)
+        if not problems:
+            continue
+
+        critical_problems = [problem for problem in problems if problem in CRITICAL_FIX_PROBLEMS]
+        supplement_problems = [problem for problem in problems if problem in SUPPLEMENT_FIX_PROBLEMS]
+
+        lines = [
+            tour_key,
+            tour.get("title") or "нет названия",
+        ]
+        if critical_problems:
+            lines.extend(["🔴 КРИТИЧНО", *[f"- {problem}" for problem in critical_problems]])
+        if supplement_problems:
+            lines.extend(["🟡 ДОПОЛНИТЬ", *[f"- {problem}" for problem in supplement_problems]])
+
+        report_blocks.append("\n".join(lines))
+
+    if not report_blocks:
+        return "✅ Очередь исправлений пуста"
+
+    return "\n\n".join(report_blocks)
+
+
 def publish_scheduled_post(post_type):
     app.logger.info("Scheduled post started: %s", post_type)
 
@@ -1440,6 +1488,7 @@ def handle_admin_command(peer_id, text):
             "/help",
             "/admin_audit",
             "/audit_tours",
+            "/fix_queue",
             "/photo_audit",
             "/photo_export",
             "/stats",
@@ -1495,6 +1544,9 @@ def handle_admin_command(peer_id, text):
 
     if text == "/audit_tours":
         return format_tours_audit()
+
+    if text == "/fix_queue":
+        return format_fix_queue()
 
     if text == "/photo_audit":
         return generate_photo_audit()
