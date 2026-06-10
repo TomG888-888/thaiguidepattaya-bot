@@ -97,6 +97,7 @@ ADMIN_HELP_TEXT = """Доступные команды:
 /product_zip <tour_key>
 /vk_auth_link
 /vk_token_debug
+/vk_post_pack <tour_key>
 /vk_market_test
 /publish expert
 /publish sales
@@ -501,6 +502,40 @@ def format_product_pack(tour_key):
     return pack
 
 
+def format_vk_post_text(tour):
+    included_preview = tour.get("included") or []
+    tags = tour.get("tags") or []
+    tag_line = " ".join(f"#{tag}" for tag in tags[:8])
+
+    lines = [
+        tour["title"],
+        "",
+        tour["short_description"],
+        "",
+        tour["full_description"],
+        "",
+        f"Цена: {format_product_export_price(tour)}",
+        f"Длительность: {tour['duration']}",
+        f"Отправление: {tour.get('departure') or 'уточняется при бронировании'}",
+    ]
+
+    if included_preview:
+        lines.extend(["", "Что включено:", *[f"- {item}" for item in included_preview]])
+
+    lines.extend(
+        [
+            "",
+            "Чтобы подобрать дату и формат, напишите в сообщения группы.",
+            "Максим подскажет лучший вариант под ваш отдых.",
+        ]
+    )
+
+    if tag_line:
+        lines.extend(["", tag_line])
+
+    return "\n".join(lines)
+
+
 def create_product_zip(tour_key, zip_dir):
     normalized_tour_key = normalize_tour_key(tour_key)
     tour = get_public_tour(normalized_tour_key)
@@ -563,6 +598,72 @@ def send_telegram_document(document_path, caption=None):
     return True, "ZIP отправлен в Telegram."
 
 
+def send_telegram_message(message):
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        return False, "TELEGRAM_BOT_TOKEN или TELEGRAM_CHAT_ID не настроены."
+
+    try:
+        response = requests.post(
+            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+            data={
+                "chat_id": TELEGRAM_CHAT_ID,
+                "text": message,
+            },
+            timeout=15,
+        )
+        response.raise_for_status()
+        result = response.json()
+    except requests.RequestException as error:
+        app.logger.exception("Telegram sendMessage request failed")
+        return False, f"Ошибка Telegram sendMessage: {sanitize_telegram_error(error)}"
+    except ValueError:
+        app.logger.exception("Telegram sendMessage returned non-JSON response")
+        return False, "Telegram вернул не-JSON ответ."
+
+    if not result.get("ok"):
+        app.logger.error("Telegram sendMessage error: %s", result)
+        return False, f"Telegram error: {result.get('description') or result}"
+
+    return True, "Сообщение отправлено в Telegram."
+
+
+def send_telegram_photo(photo_path, caption=None):
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        return False, "TELEGRAM_BOT_TOKEN или TELEGRAM_CHAT_ID не настроены."
+
+    photo_path = Path(photo_path)
+    if not photo_path.exists():
+        return False, f"{photo_path.name}: MISSING"
+
+    try:
+        with photo_path.open("rb") as photo_file:
+            response = requests.post(
+                f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto",
+                data={
+                    "chat_id": TELEGRAM_CHAT_ID,
+                    "caption": caption or "",
+                },
+                files={
+                    "photo": (photo_path.name, photo_file, "image/jpeg"),
+                },
+                timeout=30,
+            )
+        response.raise_for_status()
+        result = response.json()
+    except requests.RequestException as error:
+        app.logger.exception("Telegram sendPhoto request failed: %s", photo_path)
+        return False, f"Ошибка Telegram sendPhoto: {sanitize_telegram_error(error)}"
+    except ValueError:
+        app.logger.exception("Telegram sendPhoto returned non-JSON response: %s", photo_path)
+        return False, "Telegram вернул не-JSON ответ."
+
+    if not result.get("ok"):
+        app.logger.error("Telegram sendPhoto error: %s", result)
+        return False, f"Telegram error: {result.get('description') or result}"
+
+    return True, f"{photo_path.name}: OK"
+
+
 def send_product_zip(tour_key):
     normalized_tour_key = normalize_tour_key(tour_key)
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -575,6 +676,47 @@ def send_product_zip(tour_key):
             caption=f"Product ZIP: {normalized_tour_key}",
         )
         return message if ok else message
+
+
+def send_vk_post_pack(tour_key):
+    normalized_tour_key = normalize_tour_key(tour_key)
+    tour = get_public_tour(normalized_tour_key)
+    if not tour:
+        return f"Неизвестный тур. Используйте: {AVAILABLE_TOUR_KEYS}."
+
+    ok, message = send_telegram_message(format_vk_post_text(tour))
+    if not ok:
+        return message
+
+    sent_count = 0
+    missing = []
+    errors = []
+    for filename, photo_path in get_product_pack_photo_slots(normalized_tour_key):
+        if not photo_path.exists():
+            missing_message = f"{filename}: MISSING"
+            missing.append(missing_message)
+            ok, error_message = send_telegram_message(missing_message)
+            if not ok:
+                errors.append(error_message)
+            continue
+
+        ok, photo_message = send_telegram_photo(photo_path, caption=filename)
+        if ok:
+            sent_count += 1
+        else:
+            errors.append(photo_message)
+
+    if errors:
+        return "VK post pack отправлен частично:\n" + "\n".join(errors)
+
+    result_lines = [
+        "VK post pack отправлен в Telegram.",
+        f"Фото отправлено: {sent_count}",
+    ]
+    if missing:
+        result_lines.extend(missing)
+
+    return "\n".join(result_lines)
 
 
 def safe_format_product_export(tour_key):
@@ -1003,6 +1145,7 @@ def handle_admin_command(peer_id, text):
             "/vk_market_test",
             "/vk_auth_link",
             "/vk_token_debug",
+            "/vk_post_pack",
             "/token_help",
             "/season",
             "/stage",
@@ -1027,6 +1170,12 @@ def handle_admin_command(peer_id, text):
 
     if text == "/vk_token_debug":
         return format_vk_token_debug()
+
+    if text.startswith("/vk_post_pack"):
+        parts = text.split()
+        if len(parts) != 2:
+            return "Неверный формат команды. Используйте /vk_post_pack samet_1d_lunch."
+        return send_vk_post_pack(parts[1])
 
     if text == "/admin_audit":
         return generate_admin_audit()
