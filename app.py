@@ -100,6 +100,7 @@ ADMIN_HELP_TEXT = """Доступные команды:
 /lead_text <tour_key>
 /lead_pack <tour_key>
 /find_tour <query>
+/tour_actions <tour_key>
 /create_product <tour_key>
 /post expert
 /post sales
@@ -1209,6 +1210,31 @@ def format_find_tour_results(query):
     return "\n\n".join(results)
 
 
+def format_tour_actions(tour_key):
+    normalized_tour_key = normalize_tour_key(tour_key)
+    tour = get_public_tour(normalized_tour_key)
+    if not tour:
+        return "Тур не найден."
+
+    photo_status = "OK" if not get_missing_product_photo_filenames(normalized_tour_key) else "MISSING"
+    publication_status = "Published" if normalized_tour_key in get_published_tour_keys() else "Not published"
+
+    return (
+        f"🏝 {tour.get('title') or 'нет названия'}\n"
+        f"🔑 {normalized_tour_key}\n"
+        f"💰 {format_product_export_price(tour)}\n"
+        f"📷 Фото: {photo_status}\n"
+        f"📌 Публикация: {publication_status}\n\n"
+        "Действия:\n"
+        f"- /tour_preview {normalized_tour_key}\n"
+        f"- /lead_text {normalized_tour_key}\n"
+        f"- /lead_pack {normalized_tour_key}\n"
+        f"- /product_zip {normalized_tour_key}\n"
+        f"- /vk_post_pack {normalized_tour_key}\n"
+        f"- /mark_published {normalized_tour_key}"
+    )
+
+
 def format_published_tours():
     published_tours = get_published_tours()
     if not published_tours:
@@ -1632,6 +1658,7 @@ def handle_admin_command(peer_id, text):
             "/photo_export",
             "/stats",
             "/tour_stats",
+            "/tour_actions",
             "/tour_preview",
             "/tours",
             "/published",
@@ -1705,6 +1732,12 @@ def handle_admin_command(peer_id, text):
 
     if text == "/tour_stats":
         return format_tour_stats()
+
+    if text.startswith("/tour_actions"):
+        parts = text.split()
+        if len(parts) != 2:
+            return "Неверный формат команды. Используйте /tour_actions samet_1d_lunch."
+        return format_tour_actions(parts[1])
 
     if text.startswith("/tour_preview"):
         parts = text.split()
