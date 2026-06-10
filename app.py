@@ -92,6 +92,7 @@ ADMIN_HELP_TEXT = """Доступные команды:
 /not_published
 /mark_published <tour_key>
 /publish_queue
+/all_products_zip
 /leads
 /create_product <tour_key>
 /post expert
@@ -1175,6 +1176,15 @@ def get_publish_queue_reasons(tour_key, tour):
     return reasons
 
 
+def get_publish_ready_tours():
+    published_keys = get_published_tour_keys()
+    return [
+        (tour_key, tour)
+        for tour_key, tour in sorted(TOUR_CATALOG.items())
+        if tour_key not in published_keys and not get_publish_queue_reasons(tour_key, tour)
+    ]
+
+
 def format_publish_queue_tour(tour_key, tour, status):
     return (
         f"{tour_key}\n"
@@ -1190,6 +1200,7 @@ def format_publish_queue():
         published_tour["tour_key"]: published_tour["published_at"]
         for published_tour in published_tours
     }
+    ready_keys = {tour_key for tour_key, _ in get_publish_ready_tours()}
     ready = []
     not_ready = []
     published = []
@@ -1205,8 +1216,10 @@ def format_publish_queue():
             )
             continue
 
-        reasons = get_publish_queue_reasons(tour_key, tour)
-        if reasons:
+        if tour_key in ready_keys:
+            ready.append(format_publish_queue_tour(tour_key, tour, "Готов к публикации"))
+        else:
+            reasons = get_publish_queue_reasons(tour_key, tour)
             not_ready.append(
                 format_publish_queue_tour(
                     tour_key,
@@ -1214,8 +1227,6 @@ def format_publish_queue():
                     "Причины:\n" + "\n".join(f"- {reason}" for reason in reasons),
                 )
             )
-        else:
-            ready.append(format_publish_queue_tour(tour_key, tour, "Готов к публикации"))
 
     return "\n\n".join(
         [
@@ -1229,6 +1240,33 @@ def format_publish_queue():
             "\n\n".join(published) if published else "Нет",
         ]
     )
+
+
+def create_all_products_zip(zip_dir):
+    ready_tours = get_publish_ready_tours()
+    if not ready_tours:
+        return None, "Нет готовых туров для экспорта."
+
+    zip_path = Path(zip_dir) / "all_products.zip"
+    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for tour_key, tour in ready_tours:
+            base_dir = f"{tour_key}/"
+            archive.writestr(f"{base_dir}product.txt", format_product_pack_text(tour))
+            archive.writestr(f"{base_dir}vk_post.txt", format_vk_post_text(tour))
+            for filename, photo_path in get_product_pack_photo_slots(tour_key):
+                archive.write(photo_path, arcname=f"{base_dir}{filename}")
+
+    return zip_path, None
+
+
+def send_all_products_zip():
+    with tempfile.TemporaryDirectory() as temp_dir:
+        zip_path, error = create_all_products_zip(temp_dir)
+        if error:
+            return error
+
+        ok, message = send_telegram_document(zip_path, caption="All ready products")
+        return message if ok else message
 
 
 def publish_scheduled_post(post_type):
@@ -1330,6 +1368,7 @@ def handle_admin_command(peer_id, text):
             "/not_published",
             "/mark_published",
             "/publish_queue",
+            "/all_products_zip",
             "/leads",
             "/create_product",
             "/post",
@@ -1408,6 +1447,9 @@ def handle_admin_command(peer_id, text):
 
     if text == "/publish_queue":
         return format_publish_queue()
+
+    if text == "/all_products_zip":
+        return send_all_products_zip()
 
     if text == "/leads":
         return format_leads()
