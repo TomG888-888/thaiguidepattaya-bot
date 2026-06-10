@@ -83,6 +83,7 @@ ADMIN_HELP_TEXT = """Доступные команды:
 
 /help
 /admin_audit
+/audit_tours
 /photo_audit
 /photo_export <tour_key>
 /stats
@@ -1269,6 +1270,85 @@ def send_all_products_zip():
         return message if ok else message
 
 
+def is_empty_value(value):
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return not value.strip()
+    if isinstance(value, (list, tuple, set, dict)):
+        return len(value) == 0
+    return False
+
+
+def is_missing_or_zero_price(value):
+    if value is None:
+        return True
+
+    normalized_value = str(value).strip().lower()
+    if not normalized_value or normalized_value == "по запросу":
+        return True
+
+    normalized_number = normalized_value.replace("бат", "").replace("thb", "").strip()
+    normalized_number = normalized_number.replace(" ", "").replace(",", ".")
+    try:
+        return float(normalized_number) == 0
+    except ValueError:
+        return False
+
+
+def get_tour_audit_problems(tour_key, tour):
+    problems = []
+
+    if is_empty_value(tour.get("title")):
+        problems.append("нет названия")
+
+    price_value = tour.get("price_adult") if not is_empty_value(tour.get("price_adult")) else tour.get("price_from")
+    if is_missing_or_zero_price(price_value):
+        problems.append("нет цены")
+
+    if is_empty_value(tour.get("short_description")) and is_empty_value(tour.get("full_description")):
+        problems.append("нет описания")
+
+    if is_empty_value(tour.get("included")):
+        problems.append("нет включено")
+
+    if is_empty_value(tour.get("not_included")):
+        problems.append("нет не включено")
+
+    if is_empty_value(tour.get("duration")):
+        problems.append("нет длительности")
+
+    if is_empty_value(tour.get("departure")):
+        problems.append("нет места отправления")
+
+    if is_empty_value(tour.get("what_to_bring")):
+        problems.append("нет что взять с собой")
+
+    problems.extend(f"нет {filename}" for filename in get_missing_product_photo_filenames(tour_key))
+
+    return problems
+
+
+def format_tours_audit():
+    report_blocks = []
+    for tour_key, tour in sorted(TOUR_CATALOG.items()):
+        problems = get_tour_audit_problems(tour_key, tour)
+        if not problems:
+            continue
+
+        report_blocks.append(
+            f"{tour_key}\n"
+            f"{tour.get('title') or 'нет названия'}\n\n"
+            "ПРОБЛЕМЫ:\n"
+            + "\n".join(f"- {problem}" for problem in problems)
+        )
+
+    if not report_blocks:
+        return "✅ Все туры заполнены корректно"
+
+    return "\n\n".join(report_blocks)
+
+
 def publish_scheduled_post(post_type):
     app.logger.info("Scheduled post started: %s", post_type)
 
@@ -1359,6 +1439,7 @@ def handle_admin_command(peer_id, text):
         (
             "/help",
             "/admin_audit",
+            "/audit_tours",
             "/photo_audit",
             "/photo_export",
             "/stats",
@@ -1411,6 +1492,9 @@ def handle_admin_command(peer_id, text):
 
     if text == "/admin_audit":
         return generate_admin_audit()
+
+    if text == "/audit_tours":
+        return format_tours_audit()
 
     if text == "/photo_audit":
         return generate_photo_audit()
