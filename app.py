@@ -84,6 +84,7 @@ ADMIN_HELP_TEXT = """Доступные команды:
 /photo_export <tour_key>
 /stats
 /tours
+/tour_preview <tour_key>
 /leads
 /create_product <tour_key>
 /post expert
@@ -481,6 +482,27 @@ def get_product_pack_photo_slots(tour_key):
     ]
 
 
+def get_missing_product_photo_filenames(tour_key):
+    return [
+        filename
+        for filename, photo_path in get_product_pack_photo_slots(tour_key)
+        if not photo_path.exists()
+    ]
+
+
+def format_photo_status(tour_key):
+    missing_files = get_missing_product_photo_filenames(tour_key)
+    if not missing_files:
+        return "📷 Фото: OK"
+
+    return "\n".join(
+        [
+            "📷 Фото: MISSING",
+            *[f"MISSING: {filename}" for filename in missing_files],
+        ]
+    )
+
+
 def format_product_pack(tour_key):
     normalized_tour_key = normalize_tour_key(tour_key)
     tour = get_public_tour(normalized_tour_key)
@@ -535,6 +557,22 @@ def format_vk_post_text(tour):
         lines.extend(["", tag_line])
 
     return "\n".join(lines)
+
+
+def format_tour_preview(tour_key):
+    normalized_tour_key = normalize_tour_key(tour_key)
+    tour = get_public_tour(normalized_tour_key)
+    if not tour:
+        return f"Неизвестный тур. Используйте: {AVAILABLE_TOUR_KEYS}."
+
+    return (
+        f"TOUR PREVIEW: {normalized_tour_key}\n\n"
+        f"Карточка товара:\n{format_product_pack_text(tour)}\n\n"
+        "--------------------\n\n"
+        f"VK-пост:\n{format_vk_post_text(tour)}\n\n"
+        "--------------------\n\n"
+        f"{format_photo_status(normalized_tour_key)}"
+    )
 
 
 def create_product_zip(tour_key, zip_dir):
@@ -1048,11 +1086,7 @@ def format_draft_product_exports():
 def format_tours_list():
     lines = ["Туры:"]
     for tour_key, tour in sorted(TOUR_CATALOG.items()):
-        photo_status = (
-            "OK"
-            if all(photo_path.exists() for _, photo_path in get_product_pack_photo_slots(tour_key))
-            else "MISSING"
-        )
+        photo_status = "OK" if not get_missing_product_photo_filenames(tour_key) else "MISSING"
         lines.append(
             f"{tour_key}\n"
             f"{tour['title']}\n"
@@ -1156,6 +1190,7 @@ def handle_admin_command(peer_id, text):
             "/photo_audit",
             "/photo_export",
             "/stats",
+            "/tour_preview",
             "/tours",
             "/leads",
             "/create_product",
@@ -1211,6 +1246,12 @@ def handle_admin_command(peer_id, text):
 
     if text == "/stats":
         return format_lead_stats()
+
+    if text.startswith("/tour_preview"):
+        parts = text.split()
+        if len(parts) != 2:
+            return "Неверный формат команды. Используйте /tour_preview samet_1d_lunch."
+        return format_tour_preview(parts[1])
 
     if text == "/tours":
         return format_tours_list()
