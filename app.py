@@ -98,6 +98,7 @@ ADMIN_HELP_TEXT = """Доступные команды:
 /all_products_zip
 /leads
 /lead_text <tour_key>
+/lead_pack <tour_key>
 /create_product <tour_key>
 /post expert
 /post sales
@@ -533,6 +534,28 @@ def get_product_pack_photo_slots(tour_key):
         ("gallery_3.jpg", photo_dir / "gallery_3.jpg"),
         ("gallery_4.jpg", photo_dir / "gallery_4.jpg"),
     ]
+
+
+def format_lead_pack(tour_key):
+    normalized_tour_key = normalize_tour_key(tour_key)
+    tour = get_public_tour(normalized_tour_key)
+    if not tour:
+        return f"Неизвестный тур. Используйте: {AVAILABLE_TOUR_KEYS}."
+
+    pack = [{"type": "text", "text": format_lead_text(normalized_tour_key)}]
+    for filename, photo_path in get_product_pack_photo_slots(normalized_tour_key):
+        if photo_path.exists():
+            pack.append(
+                {
+                    "type": "photo",
+                    "path": str(photo_path),
+                    "label": filename,
+                }
+            )
+        else:
+            pack.append({"type": "text", "text": f"{filename}: MISSING"})
+
+    return pack
 
 
 def get_missing_product_photo_filenames(tour_key):
@@ -1582,6 +1605,7 @@ def handle_admin_command(peer_id, text):
             "/all_products_zip",
             "/leads",
             "/lead_text",
+            "/lead_pack",
             "/create_product",
             "/post",
             "/product",
@@ -1680,6 +1704,12 @@ def handle_admin_command(peer_id, text):
         if len(parts) != 2:
             return "Неверный формат команды. Используйте /lead_text samet_1d_lunch."
         return format_lead_text(parts[1])
+
+    if text.startswith("/lead_pack"):
+        parts = text.split()
+        if len(parts) != 2:
+            return "Неверный формат команды. Используйте /lead_pack samet_1d_lunch."
+        return format_lead_pack(parts[1])
 
     if text.startswith("/create_product"):
         parts = text.split()
