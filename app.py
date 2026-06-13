@@ -155,39 +155,6 @@ USER_VK_TOKEN=ваш_токен
 Подробная инструкция: docs/vk_user_token.md"""
 
 
-# TODO: позже подключить реальный weather API для температуры, ветра, волн, УФ и дождя.
-WEATHER_POST_TEXT = """🌴 Доброе утро, друзья!
-
-Паттайя просыпается жаркой и морской 😎
-
-🌡 Воздух: около +32°C
-🌊 Вода: около +29°C
-💨 Ветер: умеренный
-🌊 Море: спокойное или небольшая волна
-☀️ Солнце: активное, особенно после 11:00
-
-Если плохо переносите качку, перед морскими прогулками всегда смотрите на ветер и волну.
-Иногда лучше перенести острова на другой день, чем испортить себе отдых.
-
-На сегодня совет простой:
-🧴 крем от солнца
-🧢 кепка или панама
-💧 вода с собой
-👕 лёгкая одежда
-
-Хорошего дня в Таиланде!
-Берегите себя и отдыхайте с удовольствием 🇹🇭
-
-Максим
-Thai Guide Pattaya
-
-#Паттайя
-#Таиланд
-#ПогодаПаттайя
-#МореПаттайя
-#ОтдыхВТаиланде"""
-
-
 PATTAYA_WEATHER_URL = "https://api.open-meteo.com/v1/forecast"
 PATTAYA_MARINE_URL = "https://marine-api.open-meteo.com/v1/marine"
 PATTAYA_WEATHER_PARAMS = {
@@ -267,6 +234,118 @@ def format_weather_data_test():
         f"wave_height: {sea.get('wave_height')}\n"
         f"wind_wave_height: {sea.get('wind_wave_height')}\n"
         f"swell_wave_height: {sea.get('swell_wave_height')}"
+    )
+
+
+def safe_float(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def format_number(value, digits=0):
+    number = safe_float(value)
+    if number is None:
+        return "н/д"
+
+    rounded_number = round(number, digits)
+    if digits == 0:
+        return str(int(rounded_number))
+
+    return f"{rounded_number:.{digits}f}".rstrip("0").rstrip(".")
+
+
+def describe_wave_height(wave_height):
+    wave = safe_float(wave_height)
+    if wave is None:
+        return "данные по волне уточняются"
+    if wave <= 0.3:
+        return "спокойное море"
+    if wave <= 0.7:
+        return "небольшая волна"
+    if wave <= 1.2:
+        return "ощутимая волна"
+    return "море волнуется, морские поездки лучше оценивать осторожно"
+
+
+def describe_wind_speed(wind_speed):
+    wind = safe_float(wind_speed)
+    if wind is None:
+        return "ветер уточняется"
+    if wind <= 10:
+        return "слабый ветер"
+    if wind <= 20:
+        return "умеренный ветер"
+    if wind <= 30:
+        return "заметный ветер"
+    return "сильный ветер"
+
+
+def format_weather_post():
+    try:
+        weather = fetch_open_meteo_json(PATTAYA_WEATHER_URL, PATTAYA_WEATHER_PARAMS)
+        marine = fetch_open_meteo_json(PATTAYA_MARINE_URL, PATTAYA_MARINE_PARAMS)
+    except Exception as error:
+        return (
+            "WEATHER POST\n\n"
+            "Exception:\n"
+            f"{type(error).__name__}\n"
+            f"{error}"
+        )
+
+    air = weather.get("current") or {}
+    sea = marine.get("current") or {}
+
+    temperature = air.get("temperature_2m")
+    feels_like = air.get("apparent_temperature")
+    cloud_cover = air.get("cloud_cover")
+    rain = safe_float(air.get("rain")) or 0
+    precipitation = safe_float(air.get("precipitation")) or 0
+    wind_speed = air.get("wind_speed_10m")
+    wind_gusts = air.get("wind_gusts_10m")
+    sea_temperature = sea.get("sea_surface_temperature")
+    wave_height = sea.get("wave_height")
+    wave = safe_float(wave_height)
+
+    sea_state = describe_wave_height(wave_height)
+    wind_state = describe_wind_speed(wind_speed)
+    rain_text = "есть вероятность дождя / возможен дождь" if rain > 0 or precipitation > 0 else "сейчас без дождя"
+
+    if wave is not None and wave > 0.7:
+        sea_advice = "По морю сегодня есть волна. Для островов и прогулок по воде день лучше оценивать осторожно."
+        wave_warning = "\n\n⚠️ Если плохо переносите качку, морские прогулки сегодня лучше выбирать осторожно."
+    else:
+        sea_advice = (
+            "По морю сегодня выглядит спокойно. Для островов и прогулок по воде день нормальный, "
+            "но если плохо переносите качку — всё равно смотрите на ветер перед выездом."
+        )
+        wave_warning = ""
+
+    return (
+        "🌴 Доброе утро, друзья!\n\n"
+        "Сегодня по Паттайе:\n\n"
+        f"🌡 Воздух: +{format_number(temperature)}°C, ощущается как +{format_number(feels_like)}°C\n"
+        f"🌊 Вода: +{format_number(sea_temperature)}°C\n"
+        f"💨 Ветер: {format_number(wind_speed)} км/ч ({wind_state}), порывы до {format_number(wind_gusts)} км/ч\n"
+        f"🌊 Море: {sea_state}, волна около {format_number(wave_height, 1)} м\n"
+        f"☁️ Облачность: {format_number(cloud_cover)}%\n"
+        f"🌧 Дождь: {rain_text}\n\n"
+        f"{sea_advice}"
+        f"{wave_warning}\n\n"
+        "Совет от меня:\n"
+        "🧴 крем от солнца\n"
+        "🧢 головной убор\n"
+        "💧 вода с собой\n"
+        "👕 лёгкая одежда\n\n"
+        "Хорошего дня в Таиланде!\n"
+        "Максим\n"
+        "Thai Guide Pattaya 🇹🇭\n\n"
+        "#Паттайя\n"
+        "#Таиланд\n"
+        "#ПогодаПаттайя\n"
+        "#МореПаттайя\n"
+        "#ОтдыхВТаиланде"
     )
 
 
@@ -1989,7 +2068,7 @@ def handle_admin_command(peer_id, text):
         return publish_random_tour_to_vk()
 
     if text == "/weather_post":
-        return WEATHER_POST_TEXT
+        return format_weather_post()
 
     if text == "/weather_data_test":
         return format_weather_data_test()
