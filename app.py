@@ -649,32 +649,51 @@ def get_vk_post_hashtags(tour):
     return hashtags[:8]
 
 
-def format_vk_post_text(tour):
-    included_preview = tour.get("included") or []
+def format_vk_post_text(tour, tour_key=None):
+    included = tour.get("included") or []
+    what_to_bring = tour.get("what_to_bring") or []
     hashtags = get_vk_post_hashtags(tour)
+    vk_product_url = get_tour_vk_url(tour_key, tour) if tour_key else (tour.get("vk_product_url") or "")
+
+    included_text = "\n".join(f"- {item}" for item in included) if included else "- уточняется при бронировании"
+    what_to_bring_text = (
+        "\n".join(f"- {item}" for item in what_to_bring)
+        if what_to_bring
+        else "- уточняется при бронировании"
+    )
 
     lines = [
-        tour["title"],
+        f"🏝 {tour['title']}",
         "",
-        tour["short_description"],
+        f"✨ {tour.get('short_description') or tour.get('full_description') or ''}",
         "",
-        tour["full_description"],
+        "💰 Цена:",
+        format_product_export_price(tour),
         "",
-        f"Цена: {format_product_export_price(tour)}",
-        f"Длительность: {tour['duration']}",
-        f"Отправление: {tour.get('departure') or 'уточняется при бронировании'}",
+        "⏱ Длительность:",
+        tour.get("duration") or "уточняется при бронировании",
+        "",
+        "📍 Отправление:",
+        tour.get("departure") or "уточняется при бронировании",
+        "",
+        "✅ Что включено:",
+        included_text,
+        "",
+        "🎒 Что взять с собой:",
+        what_to_bring_text,
+        "",
+        "📩 Для бронирования напишите в сообщения группы.",
+        "Максим подскажет лучший вариант под ваш отдых.",
     ]
 
-    if included_preview:
-        lines.extend(["", "Что включено:", *[f"- {item}" for item in included_preview]])
-
-    lines.extend(
-        [
-            "",
-            "Чтобы подобрать дату и формат, напишите в сообщения группы.",
-            "Максим подскажет лучший вариант под ваш отдых.",
-        ]
-    )
+    if vk_product_url:
+        lines.extend(
+            [
+                "",
+                "👇 Полное описание, фото и бронирование:",
+                vk_product_url,
+            ]
+        )
 
     if hashtags:
         lines.extend(["", *hashtags])
@@ -694,19 +713,6 @@ def get_tour_vk_url(tour_key, tour=None):
     return (tour or {}).get("vk_product_url") or ""
 
 
-def format_vk_publish_post_text(tour_key, tour):
-    post_text = format_vk_post_text(tour)
-    vk_product_url = get_tour_vk_url(tour_key, tour)
-    if not vk_product_url:
-        return post_text
-
-    return (
-        f"{post_text}\n\n"
-        "👇 Полное описание и бронирование:\n\n"
-        f"{vk_product_url}"
-    )
-
-
 def format_tour_preview(tour_key):
     normalized_tour_key = normalize_tour_key(tour_key)
     tour = get_public_tour(normalized_tour_key)
@@ -719,7 +725,7 @@ def format_tour_preview(tour_key):
         f"TOUR PREVIEW: {normalized_tour_key}\n\n"
         f"Карточка товара:\n{format_product_pack_text(tour)}\n\n"
         "--------------------\n\n"
-        f"VK-пост:\n{format_vk_post_text(tour)}\n\n"
+        f"VK-пост:\n{format_vk_post_text(tour, normalized_tour_key)}\n\n"
         "--------------------\n\n"
         f"{format_photo_status(normalized_tour_key)}\n\n"
         f"VK product URL: {vk_product_url}"
@@ -874,7 +880,7 @@ def send_vk_post_pack(tour_key):
     if not tour:
         return f"Неизвестный тур. Используйте: {AVAILABLE_TOUR_KEYS}."
 
-    ok, message = send_telegram_message(format_vk_post_text(tour))
+    ok, message = send_telegram_message(format_vk_post_text(tour, normalized_tour_key))
     if not ok:
         return message
 
@@ -1504,7 +1510,7 @@ def create_all_products_zip(zip_dir):
         for tour_key, tour in ready_tours:
             base_dir = f"{tour_key}/"
             archive.writestr(f"{base_dir}product.txt", format_product_pack_text(tour))
-            archive.writestr(f"{base_dir}vk_post.txt", format_vk_post_text(tour))
+            archive.writestr(f"{base_dir}vk_post.txt", format_vk_post_text(tour, tour_key))
             for filename, photo_path in get_product_pack_photo_slots(tour_key):
                 archive.write(photo_path, arcname=f"{base_dir}{filename}")
 
@@ -2254,7 +2260,7 @@ def publish_tour_to_vk(tour_key):
         "v": VK_API_VERSION,
         "owner_id": -group_id,
         "from_group": 1,
-        "message": format_vk_publish_post_text(normalized_tour_key, tour),
+        "message": format_vk_post_text(tour, normalized_tour_key),
     }
 
     result, post_error = call_vk_method_raw("wall.post", post_data)
