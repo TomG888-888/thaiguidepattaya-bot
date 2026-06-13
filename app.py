@@ -122,6 +122,7 @@ ADMIN_HELP_TEXT = """Доступные команды:
 /vk_wall_test
 /vk_publish <tour_key>
 /vk_publish_next
+/vk_publish_random
 /vk_post_pack <tour_key>
 /vk_market_test
 /set_vk_url <tour_key> <url>
@@ -1434,13 +1435,35 @@ def publish_next_tour_to_vk():
     if not publish_result.startswith("✅ Опубликовано в VK"):
         return publish_result
 
-    post_id_match = re.search(r"^post_id:\s*(.+)$", publish_result, re.MULTILINE)
-    post_id = post_id_match.group(1).strip() if post_id_match else "unknown"
+    post_id = extract_published_post_id(publish_result)
     return (
         "✅ Опубликован следующий тур\n"
         f"tour_key: {tour_key}\n"
         f"post_id: {post_id}"
     )
+
+
+def publish_random_tour_to_vk():
+    ready_tours = get_publish_ready_tours()
+    if not ready_tours:
+        return "Нет готовых туров для публикации."
+
+    tour_key, _ = random.choice(ready_tours)
+    publish_result = publish_tour_to_vk(tour_key)
+    if not publish_result.startswith("✅ Опубликовано в VK"):
+        return publish_result
+
+    post_id = extract_published_post_id(publish_result)
+    return (
+        "✅ Опубликован случайный тур\n"
+        f"tour_key: {tour_key}\n"
+        f"post_id: {post_id}"
+    )
+
+
+def extract_published_post_id(publish_result):
+    post_id_match = re.search(r"^post_id:\s*(.+)$", publish_result, re.MULTILINE)
+    return post_id_match.group(1).strip() if post_id_match else "unknown"
 
 
 def format_publish_queue_tour(tour_key, tour, status):
@@ -1809,6 +1832,7 @@ def handle_admin_command(peer_id, text):
             "/vk_wall_test",
             "/vk_publish",
             "/vk_publish_next",
+            "/vk_publish_random",
             "/vk_post_pack",
             "/token_help",
             "/set_vk_url",
@@ -1841,6 +1865,9 @@ def handle_admin_command(peer_id, text):
 
     if text == "/vk_publish_next":
         return publish_next_tour_to_vk()
+
+    if text == "/vk_publish_random":
+        return publish_random_tour_to_vk()
 
     if text.startswith("/vk_publish"):
         parts = text.split()
