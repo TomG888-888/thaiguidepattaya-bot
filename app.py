@@ -125,6 +125,7 @@ ADMIN_HELP_TEXT = """Доступные команды:
 /vk_publish_random
 /vk_post_pack <tour_key>
 /vk_market_test
+/weather_post
 /set_vk_url <tour_key> <url>
 /publish expert
 /publish sales
@@ -151,6 +152,26 @@ USER_VK_TOKEN=ваш_токен
 Для временной авторизации через VK ID используйте команду /vk_auth_link.
 
 Подробная инструкция: docs/vk_user_token.md"""
+
+
+WEATHER_POST_TEXT = """🌤 Доброе утро, друзья!
+
+Сегодня в Паттайе хорошая погода для прогулок, пляжа и поездок на острова.
+
+Если планируете Самет, морскую прогулку или экскурсию — лучше выезжать утром, пока солнце мягче.
+
+Совет от меня:
+возьмите воду, головной убор и солнцезащитный крем.
+
+Хорошего дня в Таиланде!
+
+Максим
+Thai Guide Pattaya
+
+#Паттайя
+#Таиланд
+#ПогодаПаттайя
+#ОтдыхВТаиланде"""
 
 
 def format_lead_stats():
@@ -1834,6 +1855,7 @@ def handle_admin_command(peer_id, text):
             "/vk_publish_next",
             "/vk_publish_random",
             "/vk_post_pack",
+            "/weather_post",
             "/token_help",
             "/set_vk_url",
             "/season",
@@ -1868,6 +1890,9 @@ def handle_admin_command(peer_id, text):
 
     if text == "/vk_publish_random":
         return publish_random_tour_to_vk()
+
+    if text == "/weather_post":
+        return WEATHER_POST_TEXT
 
     if text.startswith("/vk_publish"):
         parts = text.split()
