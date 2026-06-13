@@ -126,6 +126,7 @@ ADMIN_HELP_TEXT = """Доступные команды:
 /vk_post_pack <tour_key>
 /vk_market_test
 /weather_post
+/weather_data_test
 /set_vk_url <tour_key> <url>
 /publish expert
 /publish sales
@@ -185,6 +186,88 @@ Thai Guide Pattaya
 #ПогодаПаттайя
 #МореПаттайя
 #ОтдыхВТаиланде"""
+
+
+PATTAYA_WEATHER_URL = "https://api.open-meteo.com/v1/forecast"
+PATTAYA_MARINE_URL = "https://marine-api.open-meteo.com/v1/marine"
+PATTAYA_WEATHER_PARAMS = {
+    "latitude": 12.9236,
+    "longitude": 100.8825,
+    "current": ",".join(
+        [
+            "temperature_2m",
+            "apparent_temperature",
+            "precipitation",
+            "rain",
+            "cloud_cover",
+            "wind_speed_10m",
+            "wind_direction_10m",
+            "wind_gusts_10m",
+        ]
+    ),
+    "timezone": "Asia/Bangkok",
+}
+PATTAYA_MARINE_PARAMS = {
+    "latitude": 12.90,
+    "longitude": 100.75,
+    "current": ",".join(
+        [
+            "wave_height",
+            "wind_wave_height",
+            "swell_wave_height",
+            "sea_surface_temperature",
+        ]
+    ),
+    "timezone": "Asia/Bangkok",
+}
+
+
+def fetch_open_meteo_json(url, params):
+    response = requests.get(url, params=params, timeout=15)
+    response.raise_for_status()
+    try:
+        result = response.json()
+    except ValueError as error:
+        raise RuntimeError(f"Open-Meteo вернул не-JSON ответ: {url}") from error
+
+    if "error" in result:
+        reason = result.get("reason") or result.get("error") or result
+        raise RuntimeError(f"Open-Meteo error: {reason}")
+
+    return result
+
+
+def format_weather_data_test():
+    try:
+        weather = fetch_open_meteo_json(PATTAYA_WEATHER_URL, PATTAYA_WEATHER_PARAMS)
+        marine = fetch_open_meteo_json(PATTAYA_MARINE_URL, PATTAYA_MARINE_PARAMS)
+    except Exception as error:
+        return (
+            "WEATHER DATA TEST\n\n"
+            "Exception:\n"
+            f"{type(error).__name__}\n"
+            f"{error}"
+        )
+
+    air = weather.get("current") or {}
+    sea = marine.get("current") or {}
+    return (
+        "WEATHER DATA TEST\n\n"
+        "Air:\n"
+        f"temperature: {air.get('temperature_2m')}\n"
+        f"feels_like: {air.get('apparent_temperature')}\n"
+        f"cloud_cover: {air.get('cloud_cover')}\n"
+        f"rain: {air.get('rain')}\n"
+        f"precipitation: {air.get('precipitation')}\n"
+        f"wind_speed: {air.get('wind_speed_10m')}\n"
+        f"wind_direction: {air.get('wind_direction_10m')}\n"
+        f"wind_gusts: {air.get('wind_gusts_10m')}\n\n"
+        "Sea:\n"
+        f"sea_surface_temperature: {sea.get('sea_surface_temperature')}\n"
+        f"wave_height: {sea.get('wave_height')}\n"
+        f"wind_wave_height: {sea.get('wind_wave_height')}\n"
+        f"swell_wave_height: {sea.get('swell_wave_height')}"
+    )
 
 
 def format_lead_stats():
@@ -1869,6 +1952,7 @@ def handle_admin_command(peer_id, text):
             "/vk_publish_random",
             "/vk_post_pack",
             "/weather_post",
+            "/weather_data_test",
             "/token_help",
             "/set_vk_url",
             "/season",
@@ -1906,6 +1990,9 @@ def handle_admin_command(peer_id, text):
 
     if text == "/weather_post":
         return WEATHER_POST_TEXT
+
+    if text == "/weather_data_test":
+        return format_weather_data_test()
 
     if text.startswith("/vk_publish"):
         parts = text.split()
