@@ -2165,26 +2165,24 @@ def publish_tour_to_vk(tour_key):
     except ValueError:
         return "VK_GROUP_ID должен быть числом."
 
-    try:
-        response = requests.post(
-            "https://api.vk.com/method/wall.post",
-            data={
-                "access_token": VK_TOKEN,
-                "v": VK_API_VERSION,
-                "owner_id": -group_id,
-                "from_group": 1,
-                "message": format_vk_post_text(tour),
-            },
-            timeout=10,
-        )
-        response.raise_for_status()
-        result = response.json()
-    except requests.RequestException as error:
-        app.logger.exception("VK tour wall.post request failed: %s", normalized_tour_key)
-        return f"VK wall.post request error: {error}"
-    except ValueError as error:
-        app.logger.exception("VK tour wall.post returned non-JSON response: %s", normalized_tour_key)
-        return f"VK wall.post non-JSON response: {error}"
+    attachments, upload_error = upload_tour_wall_photos(normalized_tour_key, group_id)
+    if upload_error:
+        return upload_error
+
+    post_data = {
+        "access_token": VK_TOKEN,
+        "v": VK_API_VERSION,
+        "owner_id": -group_id,
+        "from_group": 1,
+        "message": format_vk_post_text(tour),
+    }
+    if attachments:
+        post_data["attachments"] = ",".join(attachments)
+
+    result, post_error = call_vk_method_raw("wall.post", post_data)
+    if post_error:
+        app.logger.error("VK tour wall.post failed: %s", post_error)
+        return post_error
 
     if "error" in result:
         app.logger.error("VK tour wall.post error: %s", result["error"])
@@ -2199,8 +2197,99 @@ def publish_tour_to_vk(tour_key):
     return (
         "✅ Опубликовано в VK\n"
         f"tour_key: {normalized_tour_key}\n"
-        f"post_id: {post_id}"
+        f"post_id: {post_id}\n"
+        f"photos: {len(attachments)}"
     )
+
+
+def call_vk_method_raw(method, data, timeout=20):
+    try:
+        response = requests.post(
+            f"https://api.vk.com/method/{method}",
+            data=data,
+            timeout=timeout,
+        )
+        response.raise_for_status()
+        return response.json(), None
+    except requests.RequestException as error:
+        return None, f"VK {method} request error: {error}"
+    except ValueError as error:
+        return None, f"VK {method} non-JSON response: {error}"
+
+
+def upload_tour_wall_photos(tour_key, group_id):
+    attachments = []
+    photo_paths = [
+        photo_path
+        for _, photo_path in get_product_pack_photo_slots(tour_key)
+        if photo_path.exists()
+    ]
+    if not photo_paths:
+        return attachments, None
+
+    for photo_path in photo_paths:
+        attachment, error = upload_wall_photo(photo_path, group_id)
+        if error:
+            return [], error
+        attachments.append(attachment)
+
+    return attachments, None
+
+
+def upload_wall_photo(photo_path, group_id):
+    upload_server_result, error = call_vk_method_raw(
+        "photos.getWallUploadServer",
+        {
+            "access_token": VK_TOKEN,
+            "v": VK_API_VERSION,
+            "group_id": group_id,
+        },
+    )
+    if error:
+        return None, error
+    if "error" in upload_server_result:
+        app.logger.error("VK getWallUploadServer error: %s", upload_server_result["error"])
+        return None, "VK response:\n" + json.dumps(upload_server_result, ensure_ascii=False, indent=2)
+
+    upload_url = upload_server_result.get("response", {}).get("upload_url")
+    if not upload_url:
+        return None, "VK response:\n" + json.dumps(upload_server_result, ensure_ascii=False, indent=2)
+
+    try:
+        with Path(photo_path).open("rb") as photo_file:
+            upload_response = requests.post(
+                upload_url,
+                files={"photo": (Path(photo_path).name, photo_file, "image/jpeg")},
+                timeout=30,
+            )
+        upload_response.raise_for_status()
+        upload_result = upload_response.json()
+    except requests.RequestException as error:
+        return None, f"VK wall photo upload request error: {error}"
+    except ValueError as error:
+        return None, f"VK wall photo upload non-JSON response: {error}"
+
+    save_data = {
+        "access_token": VK_TOKEN,
+        "v": VK_API_VERSION,
+        "group_id": group_id,
+        "photo": upload_result.get("photo"),
+        "server": upload_result.get("server"),
+        "hash": upload_result.get("hash"),
+    }
+    saved_photo_result, error = call_vk_method_raw("photos.saveWallPhoto", save_data)
+    if error:
+        return None, error
+    if "error" in saved_photo_result:
+        app.logger.error("VK saveWallPhoto error: %s", saved_photo_result["error"])
+        return None, "VK response:\n" + json.dumps(saved_photo_result, ensure_ascii=False, indent=2)
+
+    photo = saved_photo_result.get("response", [])
+    photo = photo[0] if isinstance(photo, list) and photo else None
+    if not isinstance(photo, dict) or not photo.get("owner_id") or not photo.get("id"):
+        return None, "VK response:\n" + json.dumps(saved_photo_result, ensure_ascii=False, indent=2)
+
+    return f"photo{photo['owner_id']}_{photo['id']}", None
 
 
 def publish_vk_wall_post(message):
