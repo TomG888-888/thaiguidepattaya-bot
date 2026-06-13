@@ -1756,7 +1756,10 @@ def handle_admin_command(peer_id, text):
         return format_vk_token_debug()
 
     if text == "/vk_wall_test":
-        return run_vk_wall_test()
+        return send_text(
+            peer_id,
+            "VK WALL TEST HANDLER ENTERED",
+        )
 
     if text.startswith("/vk_post_pack"):
         parts = text.split()
@@ -1958,6 +1961,10 @@ def get_event_key(payload, message):
         return f"conversation:{peer_id}:{conversation_message_id}"
 
     return None
+
+
+def send_text(peer_id, message):
+    return message
 
 
 def send_vk_message(peer_id, message):
