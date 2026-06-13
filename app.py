@@ -402,7 +402,10 @@ def format_price_with_currency(price):
     if normalized_price_lower == "по запросу" or "бат" in normalized_price_lower or "thb" in normalized_price_lower:
         return normalized_price
 
-    return f"{normalized_price} бат"
+    if re.fullmatch(r"\d+(?:[.,]\d+)?", normalized_price.replace(" ", "")):
+        return f"{normalized_price} бат"
+
+    return normalized_price
 
 
 def format_product_export_price(tour):
@@ -1298,7 +1301,7 @@ def unmark_catalog_tour_published(tour_key):
 
 def has_publishable_price(tour):
     price = format_product_export_price(tour).strip().lower()
-    return bool(price) and "по запросу" not in price
+    return bool(price) and "по запросу" not in price and "нет в продаже" not in price
 
 
 def get_publish_queue_reasons(tour_key, tour):
@@ -1426,7 +1429,7 @@ def is_missing_or_zero_price(value):
         return True
 
     normalized_value = str(value).strip().lower()
-    if not normalized_value or normalized_value == "по запросу":
+    if not normalized_value or normalized_value in ("по запросу", "нет в продаже"):
         return True
 
     normalized_number = normalized_value.replace("бат", "").replace("thb", "").strip()
