@@ -1756,10 +1756,7 @@ def handle_admin_command(peer_id, text):
         return format_vk_token_debug()
 
     if text == "/vk_wall_test":
-        return send_text(
-            peer_id,
-            "VK WALL TEST HANDLER ENTERED",
-        )
+        return run_vk_wall_test(peer_id)
 
     if text.startswith("/vk_post_pack"):
         parts = text.split()
@@ -1963,10 +1960,6 @@ def get_event_key(payload, message):
     return None
 
 
-def send_text(peer_id, message):
-    return message
-
-
 def send_vk_message(peer_id, message):
     if not VK_TOKEN:
         app.logger.error("VK_TOKEN is not configured")
@@ -2087,15 +2080,12 @@ def send_vk_photo_message(peer_id, photo_path):
     return True
 
 
-def run_vk_wall_test():
-    def report_to_telegram(message):
-        ok, error_message = send_telegram_message(message)
-        if not ok:
-            app.logger.error("VK wall.post test Telegram report failed: %s", error_message)
-        return ok, error_message
+def run_vk_wall_test(peer_id):
+    def report_to_vk(message):
+        if not send_vk_message(peer_id, message):
+            app.logger.error("VK wall.post test VK report failed: %s", message)
 
-    report_to_telegram("VK wall test started")
-
+    report_to_vk("VK WALL TEST HANDLER ENTERED")
     try:
         if not VK_TOKEN:
             raise RuntimeError("VK_TOKEN не настроен.")
@@ -2108,10 +2098,7 @@ def run_vk_wall_test():
         except ValueError as error:
             raise RuntimeError("VK_GROUP_ID должен быть числом.") from error
 
-        message = (
-            "Тестовая публикация ThaiGuide Pattaya.\n"
-            "Если вы видите этот пост — VK wall.post работает."
-        )
+        message = "Тестовая публикация ThaiGuide Pattaya. VK wall.post работает."
 
         response = requests.post(
             "https://api.vk.com/method/wall.post",
@@ -2128,20 +2115,20 @@ def run_vk_wall_test():
         result = response.json()
 
         vk_response_text = "VK response:\n" + json.dumps(result, ensure_ascii=False, indent=2)
-        report_to_telegram(vk_response_text)
+        report_to_vk(vk_response_text)
 
         if "error" in result:
             app.logger.error("VK wall.post test error: %s", result["error"])
-            return vk_response_text
+            return []
 
         post_id = result.get("response", {}).get("post_id")
         if not post_id:
             app.logger.error("VK wall.post test response without post_id: %s", result)
-            return vk_response_text
+            return []
 
         success_message = f"✅ VK wall.post OK\npost_id: {post_id}"
-        report_to_telegram(success_message)
-        return success_message
+        report_to_vk(success_message)
+        return []
     except Exception as error:
         app.logger.exception("VK wall.post test exception")
         exception_message = (
@@ -2149,8 +2136,8 @@ def run_vk_wall_test():
             f"{type(error).__name__}\n"
             f"{error}"
         )
-        report_to_telegram(exception_message)
-        return exception_message
+        report_to_vk(exception_message)
+        return []
 
 
 def publish_vk_wall_post(message):
@@ -2375,7 +2362,7 @@ def vk_callback():
             add_message(peer_id, "user", text)
 
             admin_reply = handle_admin_command(sender_id, text.strip())
-            if admin_reply:
+            if admin_reply is not None:
                 reply_peer_id = (
                     sender_id
                     if text.strip().startswith(
