@@ -10,8 +10,10 @@ import html
 import secrets
 import tempfile
 import time
+from datetime import datetime
 from urllib.parse import urlencode
 import zipfile
+from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from flask import Flask, Response, jsonify, redirect, request
@@ -127,6 +129,8 @@ ADMIN_HELP_TEXT = """Доступные команды:
 /vk_market_test
 /weather_post
 /weather_data_test
+/exchange_rate_data_test
+/exchange_rate_post
 /set_vk_url <tour_key> <url>
 /publish expert
 /publish sales
@@ -345,6 +349,115 @@ def format_weather_post():
         "#Таиланд\n"
         "#ПогодаПаттайя\n"
         "#МореПаттайя\n"
+        "#ОтдыхВТаиланде"
+    )
+
+
+EXCHANGE_RATE_API_URL = "https://open.er-api.com/v6/latest/{base}"
+EXCHANGE_RATE_BASES = ("USD", "EUR", "RUB")
+
+
+def fetch_exchange_rate_to_thb(base):
+    response = requests.get(EXCHANGE_RATE_API_URL.format(base=base), timeout=15)
+    response.raise_for_status()
+    try:
+        result = response.json()
+    except ValueError as error:
+        raise RuntimeError(f"Exchange API вернул не-JSON ответ: {base}") from error
+
+    if result.get("result") != "success":
+        raise RuntimeError(f"Exchange API error for {base}: {result}")
+
+    rates = result.get("rates") or {}
+    thb_rate = rates.get("THB")
+    if thb_rate is None:
+        raise RuntimeError(f"Exchange API не вернул THB для {base}")
+
+    return float(thb_rate), result
+
+
+def format_exchange_updated_at(api_result):
+    timestamp = api_result.get("time_last_update_unix") or api_result.get("time_next_update_unix")
+    if timestamp:
+        updated_at = datetime.fromtimestamp(timestamp, ZoneInfo("Asia/Bangkok"))
+    else:
+        updated_at = datetime.now(ZoneInfo("Asia/Bangkok"))
+
+    return updated_at.strftime("%d.%m.%Y %H:%M")
+
+
+def get_exchange_rates_to_thb():
+    usd_rate, usd_result = fetch_exchange_rate_to_thb("USD")
+    eur_rate, _ = fetch_exchange_rate_to_thb("EUR")
+    rub_rate, _ = fetch_exchange_rate_to_thb("RUB")
+    return {
+        "USD": usd_rate,
+        "EUR": eur_rate,
+        "RUB": rub_rate,
+        "updated_at": format_exchange_updated_at(usd_result),
+    }
+
+
+def format_exchange_rate_data_test():
+    try:
+        rates = get_exchange_rates_to_thb()
+    except Exception as error:
+        return format_exchange_rate_error(error)
+
+    return (
+        "💱 Курсы валют\n\n"
+        f"🇺🇸 USD → {rates['USD']:.2f} THB\n"
+        f"🇪🇺 EUR → {rates['EUR']:.2f} THB\n"
+        f"🇷🇺 RUB → {rates['RUB']:.3f} THB\n\n"
+        "Источник: API\n"
+        f"Обновлено: {rates['updated_at']}"
+    )
+
+
+def format_exchange_rate_error(error):
+    return (
+        "💱 Курсы валют\n\n"
+        "Exception:\n"
+        f"{type(error).__name__}\n"
+        f"{error}"
+    )
+
+
+def format_thb_amount(amount):
+    return f"{amount:,.0f}".replace(",", " ")
+
+
+def format_exchange_rate_post():
+    try:
+        rates = get_exchange_rates_to_thb()
+    except Exception as error:
+        return format_exchange_rate_error(error)
+
+    usd_100 = 100 * rates["USD"]
+    eur_100 = 100 * rates["EUR"]
+    rub_10000 = 10000 * rates["RUB"]
+    usd_500 = 500 * rates["USD"]
+
+    return (
+        "💱 Курсы валют в Таиланде\n\n"
+        "Доброе утро, друзья!\n\n"
+        "Сегодня ориентировочные курсы к тайскому бату:\n\n"
+        f"🇺🇸 1 USD → {rates['USD']:.2f} THB\n"
+        f"🇪🇺 1 EUR → {rates['EUR']:.2f} THB\n"
+        f"🇷🇺 1 RUB → {rates['RUB']:.3f} THB\n\n"
+        "Примеры пересчета:\n"
+        f"100 USD → примерно {format_thb_amount(usd_100)} THB\n"
+        f"500 USD → примерно {format_thb_amount(usd_500)} THB\n"
+        f"100 EUR → примерно {format_thb_amount(eur_100)} THB\n"
+        f"10 000 RUB → примерно {format_thb_amount(rub_10000)} THB\n\n"
+        "Фактический курс в обменниках может отличаться от справочного курса API.\n\n"
+        f"Обновлено: {rates['updated_at']}\n\n"
+        "Максим\n"
+        "Thai Guide Pattaya 🇹🇭\n\n"
+        "#Паттайя\n"
+        "#Таиланд\n"
+        "#КурсВалют\n"
+        "#ТайскийБат\n"
         "#ОтдыхВТаиланде"
     )
 
@@ -2032,6 +2145,8 @@ def handle_admin_command(peer_id, text):
             "/vk_post_pack",
             "/weather_post",
             "/weather_data_test",
+            "/exchange_rate_data_test",
+            "/exchange_rate_post",
             "/token_help",
             "/set_vk_url",
             "/season",
@@ -2072,6 +2187,12 @@ def handle_admin_command(peer_id, text):
 
     if text == "/weather_data_test":
         return format_weather_data_test()
+
+    if text == "/exchange_rate_data_test":
+        return format_exchange_rate_data_test()
+
+    if text == "/exchange_rate_post":
+        return format_exchange_rate_post()
 
     if text.startswith("/vk_publish"):
         parts = text.split()
