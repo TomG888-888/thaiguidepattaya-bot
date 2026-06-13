@@ -118,6 +118,7 @@ ADMIN_HELP_TEXT = """Доступные команды:
 /vk_auth_link
 /vk_token_debug
 /vk_wall_test
+/vk_publish <tour_key>
 /vk_post_pack <tour_key>
 /vk_market_test
 /publish expert
@@ -1729,6 +1730,7 @@ def handle_admin_command(peer_id, text):
             "/vk_auth_link",
             "/vk_token_debug",
             "/vk_wall_test",
+            "/vk_publish",
             "/vk_post_pack",
             "/token_help",
             "/season",
@@ -1757,6 +1759,12 @@ def handle_admin_command(peer_id, text):
 
     if text == "/vk_wall_test":
         return run_vk_wall_test(peer_id)
+
+    if text.startswith("/vk_publish"):
+        parts = text.split()
+        if len(parts) != 2:
+            return "Неверный формат команды. Используйте /vk_publish samet_1d_lunch."
+        return publish_tour_to_vk(parts[1])
 
     if text.startswith("/vk_post_pack"):
         parts = text.split()
@@ -2138,6 +2146,61 @@ def run_vk_wall_test(peer_id):
         )
         report_to_vk(exception_message)
         return []
+
+
+def publish_tour_to_vk(tour_key):
+    normalized_tour_key = normalize_tour_key(tour_key)
+    tour = get_public_tour(normalized_tour_key)
+    if not tour:
+        return f"Неизвестный тур. Используйте: {AVAILABLE_TOUR_KEYS}."
+
+    if not VK_TOKEN:
+        return "VK_TOKEN не настроен."
+
+    if not VK_GROUP_ID:
+        return "VK_GROUP_ID не настроен."
+
+    try:
+        group_id = int(VK_GROUP_ID)
+    except ValueError:
+        return "VK_GROUP_ID должен быть числом."
+
+    try:
+        response = requests.post(
+            "https://api.vk.com/method/wall.post",
+            data={
+                "access_token": VK_TOKEN,
+                "v": VK_API_VERSION,
+                "owner_id": -group_id,
+                "from_group": 1,
+                "message": format_vk_post_text(tour),
+            },
+            timeout=10,
+        )
+        response.raise_for_status()
+        result = response.json()
+    except requests.RequestException as error:
+        app.logger.exception("VK tour wall.post request failed: %s", normalized_tour_key)
+        return f"VK wall.post request error: {error}"
+    except ValueError as error:
+        app.logger.exception("VK tour wall.post returned non-JSON response: %s", normalized_tour_key)
+        return f"VK wall.post non-JSON response: {error}"
+
+    if "error" in result:
+        app.logger.error("VK tour wall.post error: %s", result["error"])
+        return "VK response:\n" + json.dumps(result, ensure_ascii=False, indent=2)
+
+    post_id = result.get("response", {}).get("post_id")
+    if not post_id:
+        app.logger.error("VK tour wall.post response without post_id: %s", result)
+        return "VK response:\n" + json.dumps(result, ensure_ascii=False, indent=2)
+
+    mark_tour_published(normalized_tour_key)
+    return (
+        "✅ Опубликовано в VK\n"
+        f"tour_key: {normalized_tour_key}\n"
+        f"post_id: {post_id}"
+    )
 
 
 def publish_vk_wall_post(message):
