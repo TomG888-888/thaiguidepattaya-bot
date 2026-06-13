@@ -608,10 +608,43 @@ def format_product_pack(tour_key):
     return pack
 
 
+def normalize_vk_hashtag(tag):
+    tag_text = str(tag or "").strip()
+    if not tag_text:
+        return ""
+
+    parts = re.findall(r"[0-9A-Za-zА-Яа-яЁё]+", tag_text)
+    if not parts:
+        return ""
+
+    return "#" + "".join(part[:1].upper() + part[1:] for part in parts)
+
+
+def get_vk_post_hashtags(tour):
+    title = (tour.get("title") or "").lower()
+    tags = [str(tag).lower() for tag in tour.get("tags") or []]
+    if "самет" in title or any("самет" in tag for tag in tags):
+        return [
+            "#Самет",
+            "#Паттайя",
+            "#ЭкскурсииПаттайя",
+            "#Таиланд",
+            "#ОстровСамет",
+            "#ОтдыхВТаиланде",
+        ]
+
+    hashtags = []
+    for tag in tour.get("tags") or []:
+        hashtag = normalize_vk_hashtag(tag)
+        if hashtag and hashtag not in hashtags:
+            hashtags.append(hashtag)
+
+    return hashtags[:8]
+
+
 def format_vk_post_text(tour):
     included_preview = tour.get("included") or []
-    tags = tour.get("tags") or []
-    tag_line = " ".join(f"#{tag}" for tag in tags[:8])
+    hashtags = get_vk_post_hashtags(tour)
 
     lines = [
         tour["title"],
@@ -636,8 +669,8 @@ def format_vk_post_text(tour):
         ]
     )
 
-    if tag_line:
-        lines.extend(["", tag_line])
+    if hashtags:
+        lines.extend(["", *hashtags])
 
     return "\n".join(lines)
 
