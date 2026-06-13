@@ -95,7 +95,8 @@ def init_postgres_db():
                 CREATE TABLE IF NOT EXISTS tours (
                     tour_key TEXT PRIMARY KEY,
                     is_published BOOLEAN NOT NULL DEFAULT FALSE,
-                    published_at TIMESTAMPTZ
+                    published_at TIMESTAMPTZ,
+                    vk_product_url TEXT
                 )
                 """
             )
@@ -109,6 +110,12 @@ def init_postgres_db():
                 """
                 ALTER TABLE tours
                 ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ
+                """
+            )
+            cursor.execute(
+                """
+                ALTER TABLE tours
+                ADD COLUMN IF NOT EXISTS vk_product_url TEXT
                 """
             )
         connection.commit()
@@ -178,7 +185,8 @@ def init_sqlite_db():
             CREATE TABLE IF NOT EXISTS tours (
                 tour_key TEXT PRIMARY KEY,
                 is_published INTEGER NOT NULL DEFAULT 0,
-                published_at TIMESTAMP
+                published_at TIMESTAMP,
+                vk_product_url TEXT
             )
             """
         )
@@ -196,6 +204,13 @@ def init_sqlite_db():
                 """
                 ALTER TABLE tours
                 ADD COLUMN published_at TIMESTAMP
+                """
+            )
+        if "vk_product_url" not in columns:
+            connection.execute(
+                """
+                ALTER TABLE tours
+                ADD COLUMN vk_product_url TEXT
                 """
             )
         connection.commit()
@@ -368,6 +383,50 @@ def unmark_tour_published(tour_key):
             )
         connection.commit()
         cursor.close()
+
+
+def set_tour_vk_product_url(tour_key, url):
+    param = placeholder()
+
+    with closing(get_connection()) as connection:
+        cursor = connection.cursor()
+        if is_postgres():
+            cursor.execute(
+                """
+                INSERT INTO tours (tour_key, vk_product_url)
+                VALUES (%s, %s)
+                ON CONFLICT (tour_key)
+                DO UPDATE SET vk_product_url = EXCLUDED.vk_product_url
+                """,
+                (tour_key, url),
+            )
+        else:
+            cursor.execute(
+                f"""
+                INSERT INTO tours (tour_key, vk_product_url)
+                VALUES ({param}, {param})
+                ON CONFLICT(tour_key)
+                DO UPDATE SET vk_product_url = excluded.vk_product_url
+                """,
+                (tour_key, url),
+            )
+        connection.commit()
+        cursor.close()
+
+
+def get_tour_vk_product_url(tour_key):
+    param = placeholder()
+
+    with closing(get_connection()) as connection:
+        cursor = connection.cursor()
+        cursor.execute(
+            f"SELECT vk_product_url FROM tours WHERE tour_key = {param}",
+            (tour_key,),
+        )
+        row = cursor.fetchone()
+        cursor.close()
+
+        return row[0] if row and row[0] else ""
 
 
 def get_published_tours():

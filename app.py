@@ -29,9 +29,11 @@ from database import (
     get_published_tour_keys,
     get_published_tours,
     get_recent_messages,
+    get_tour_vk_product_url,
     init_db,
     mark_tour_published,
     mark_event_processed,
+    set_tour_vk_product_url,
     unmark_tour_published,
     update_lead_stage,
     update_lead_status,
@@ -121,6 +123,7 @@ ADMIN_HELP_TEXT = """Доступные команды:
 /vk_publish <tour_key>
 /vk_post_pack <tour_key>
 /vk_market_test
+/set_vk_url <tour_key> <url>
 /publish expert
 /publish sales
 /publish story
@@ -678,11 +681,38 @@ def format_vk_post_text(tour):
     return "\n".join(lines)
 
 
+def get_tour_vk_url(tour_key, tour=None):
+    normalized_tour_key = normalize_tour_key(tour_key)
+    saved_url = get_tour_vk_product_url(normalized_tour_key)
+    if saved_url:
+        return saved_url
+
+    if tour is None:
+        tour = get_public_tour(normalized_tour_key)
+
+    return (tour or {}).get("vk_product_url") or ""
+
+
+def format_vk_publish_post_text(tour_key, tour):
+    post_text = format_vk_post_text(tour)
+    vk_product_url = get_tour_vk_url(tour_key, tour)
+    if not vk_product_url:
+        return post_text
+
+    return (
+        f"{post_text}\n\n"
+        "👇 Полное описание и бронирование:\n\n"
+        f"{vk_product_url}"
+    )
+
+
 def format_tour_preview(tour_key):
     normalized_tour_key = normalize_tour_key(tour_key)
     tour = get_public_tour(normalized_tour_key)
     if not tour:
         return f"Неизвестный тур. Используйте: {AVAILABLE_TOUR_KEYS}."
+
+    vk_product_url = get_tour_vk_url(normalized_tour_key, tour) or "не заполнена"
 
     return (
         f"TOUR PREVIEW: {normalized_tour_key}\n\n"
@@ -690,7 +720,8 @@ def format_tour_preview(tour_key):
         "--------------------\n\n"
         f"VK-пост:\n{format_vk_post_text(tour)}\n\n"
         "--------------------\n\n"
-        f"{format_photo_status(normalized_tour_key)}"
+        f"{format_photo_status(normalized_tour_key)}\n\n"
+        f"VK product URL: {vk_product_url}"
     )
 
 
@@ -1259,19 +1290,22 @@ def format_tour_actions(tour_key):
 
     photo_status = "OK" if not get_missing_product_photo_filenames(normalized_tour_key) else "MISSING"
     publication_status = "Published" if normalized_tour_key in get_published_tour_keys() else "Not published"
+    vk_product_url = get_tour_vk_url(normalized_tour_key, tour) or "не заполнена"
 
     return (
         f"🏝 {tour.get('title') or 'нет названия'}\n"
         f"🔑 {normalized_tour_key}\n"
         f"💰 {format_product_export_price(tour)}\n"
         f"📷 Фото: {photo_status}\n"
-        f"📌 Публикация: {publication_status}\n\n"
+        f"📌 Публикация: {publication_status}\n"
+        f"🔗 VK товар: {vk_product_url}\n\n"
         "Действия:\n"
         f"- /tour_preview {normalized_tour_key}\n"
         f"- /lead_text {normalized_tour_key}\n"
         f"- /lead_pack {normalized_tour_key}\n"
         f"- /product_zip {normalized_tour_key}\n"
         f"- /vk_post_pack {normalized_tour_key}\n"
+        f"- /set_vk_url {normalized_tour_key} <url>\n"
         f"- /mark_published {normalized_tour_key}\n"
         f"- /unmark_published {normalized_tour_key}"
     )
@@ -1333,6 +1367,23 @@ def unmark_catalog_tour_published(tour_key):
 
     unmark_tour_published(normalized_tour_key)
     return f"↩️ Unpublished: {normalized_tour_key}"
+
+
+def set_catalog_tour_vk_url(tour_key, url):
+    normalized_tour_key = normalize_tour_key(tour_key)
+    if not get_public_tour(normalized_tour_key):
+        return "Тур не найден."
+
+    normalized_url = str(url or "").strip()
+    if not normalized_url:
+        return "Неверный формат команды. Используйте /set_vk_url samet_1d_lunch https://vk.com/market-..."
+
+    set_tour_vk_product_url(normalized_tour_key, normalized_url)
+    return (
+        "✅ VK URL сохранен\n"
+        f"tour_key: {normalized_tour_key}\n"
+        f"url: {normalized_url}"
+    )
 
 
 def has_publishable_price(tour):
@@ -1733,6 +1784,7 @@ def handle_admin_command(peer_id, text):
             "/vk_publish",
             "/vk_post_pack",
             "/token_help",
+            "/set_vk_url",
             "/season",
             "/stage",
             "/booked",
@@ -1771,6 +1823,12 @@ def handle_admin_command(peer_id, text):
         if len(parts) != 2:
             return "Неверный формат команды. Используйте /vk_post_pack samet_1d_lunch."
         return send_vk_post_pack(parts[1])
+
+    if text.startswith("/set_vk_url"):
+        parts = text.split(maxsplit=2)
+        if len(parts) != 3:
+            return "Неверный формат команды. Используйте /set_vk_url samet_1d_lunch https://vk.com/market-..."
+        return set_catalog_tour_vk_url(parts[1], parts[2])
 
     if text == "/admin_audit":
         return generate_admin_audit()
@@ -2174,7 +2232,7 @@ def publish_tour_to_vk(tour_key):
         "v": VK_API_VERSION,
         "owner_id": -group_id,
         "from_group": 1,
-        "message": format_vk_post_text(tour),
+        "message": format_vk_publish_post_text(normalized_tour_key, tour),
     }
     if attachments:
         post_data["attachments"] = ",".join(attachments)

@@ -23,6 +23,7 @@ PUBLIC_TOUR_FIELDS = (
     "cancellation_policy",
     "what_to_bring",
     "tags",
+    "vk_product_url",
 )
 DEFAULT_PHOTOS = {
     "cover": "",
@@ -71,6 +72,7 @@ def make_tour(
     cancellation_policy=COMMON_CANCELLATION_POLICY,
     what_to_bring=None,
     tags=None,
+    vk_product_url="",
 ):
     if status == "active" and LOW_SEASON_ACTIVE_NOTE not in full_description:
         full_description = f"{full_description} {LOW_SEASON_ACTIVE_NOTE}"
@@ -97,6 +99,7 @@ def make_tour(
         "what_to_bring": what_to_bring
         or ["купальник", "полотенце", "солнцезащитный крем", "головной убор", "наличные"],
         "tags": tags or [],
+        "vk_product_url": vk_product_url,
     }
     if internal_net_price is not None:
         tour["internal_net_price"] = internal_net_price
