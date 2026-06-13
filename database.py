@@ -341,6 +341,35 @@ def mark_tour_published(tour_key):
         cursor.close()
 
 
+def unmark_tour_published(tour_key):
+    param = placeholder()
+
+    with closing(get_connection()) as connection:
+        cursor = connection.cursor()
+        if is_postgres():
+            cursor.execute(
+                """
+                INSERT INTO tours (tour_key, is_published, published_at)
+                VALUES (%s, FALSE, NULL)
+                ON CONFLICT (tour_key)
+                DO UPDATE SET is_published = FALSE, published_at = NULL
+                """,
+                (tour_key,),
+            )
+        else:
+            cursor.execute(
+                f"""
+                INSERT INTO tours (tour_key, is_published, published_at)
+                VALUES ({param}, 0, NULL)
+                ON CONFLICT(tour_key)
+                DO UPDATE SET is_published = 0, published_at = NULL
+                """,
+                (tour_key,),
+            )
+        connection.commit()
+        cursor.close()
+
+
 def get_published_tours():
     with closing(get_connection()) as connection:
         cursor = connection.cursor()

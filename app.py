@@ -31,6 +31,7 @@ from database import (
     init_db,
     mark_tour_published,
     mark_event_processed,
+    unmark_tour_published,
     update_lead_stage,
     update_lead_status,
 )
@@ -94,6 +95,7 @@ ADMIN_HELP_TEXT = """Доступные команды:
 /published
 /not_published
 /mark_published <tour_key>
+/unmark_published <tour_key>
 /publish_queue
 /all_products_zip
 /leads
@@ -1231,7 +1233,8 @@ def format_tour_actions(tour_key):
         f"- /lead_pack {normalized_tour_key}\n"
         f"- /product_zip {normalized_tour_key}\n"
         f"- /vk_post_pack {normalized_tour_key}\n"
-        f"- /mark_published {normalized_tour_key}"
+        f"- /mark_published {normalized_tour_key}\n"
+        f"- /unmark_published {normalized_tour_key}"
     )
 
 
@@ -1282,6 +1285,15 @@ def mark_catalog_tour_published(tour_key):
 
     mark_tour_published(normalized_tour_key)
     return f"✅ Published: {normalized_tour_key}"
+
+
+def unmark_catalog_tour_published(tour_key):
+    normalized_tour_key = normalize_tour_key(tour_key)
+    if not get_public_tour(normalized_tour_key):
+        return "Тур не найден."
+
+    unmark_tour_published(normalized_tour_key)
+    return f"↩️ Unpublished: {normalized_tour_key}"
 
 
 def has_publishable_price(tour):
@@ -1664,6 +1676,7 @@ def handle_admin_command(peer_id, text):
             "/published",
             "/not_published",
             "/mark_published",
+            "/unmark_published",
             "/publish_queue",
             "/all_products_zip",
             "/leads",
@@ -1759,6 +1772,12 @@ def handle_admin_command(peer_id, text):
         if len(parts) != 2:
             return "Неверный формат команды. Используйте /mark_published samet_1d_lunch."
         return mark_catalog_tour_published(parts[1])
+
+    if text.startswith("/unmark_published"):
+        parts = text.split()
+        if len(parts) != 2:
+            return "Неверный формат команды. Используйте /unmark_published samet_1d_lunch."
+        return unmark_catalog_tour_published(parts[1])
 
     if text == "/publish_queue":
         return format_publish_queue()
