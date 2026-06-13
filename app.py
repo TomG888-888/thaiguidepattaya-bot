@@ -1,4 +1,5 @@
 import logging
+import json
 import os
 from pathlib import Path
 import random
@@ -116,6 +117,7 @@ ADMIN_HELP_TEXT = """Доступные команды:
 /product_zip <tour_key>
 /vk_auth_link
 /vk_token_debug
+/vk_wall_test
 /vk_post_pack <tour_key>
 /vk_market_test
 /publish expert
@@ -1726,6 +1728,7 @@ def handle_admin_command(peer_id, text):
             "/vk_market_test",
             "/vk_auth_link",
             "/vk_token_debug",
+            "/vk_wall_test",
             "/vk_post_pack",
             "/token_help",
             "/season",
@@ -1751,6 +1754,9 @@ def handle_admin_command(peer_id, text):
 
     if text == "/vk_token_debug":
         return format_vk_token_debug()
+
+    if text == "/vk_wall_test":
+        return run_vk_wall_test()
 
     if text.startswith("/vk_post_pack"):
         parts = text.split()
@@ -2072,6 +2078,60 @@ def send_vk_photo_message(peer_id, photo_path):
 
     app.logger.info("VK photo messages.send success: peer_id=%s, photo=%s", peer_id, photo_path.name)
     return True
+
+
+def run_vk_wall_test():
+    if not VK_TOKEN:
+        return "VK_TOKEN не настроен."
+
+    if not VK_GROUP_ID:
+        return "VK_GROUP_ID не настроен."
+
+    try:
+        group_id = int(VK_GROUP_ID)
+    except ValueError:
+        return "VK_GROUP_ID должен быть числом."
+
+    message = (
+        "Тестовая публикация ThaiGuide Pattaya.\n"
+        "Если вы видите этот пост — VK wall.post работает."
+    )
+
+    try:
+        response = requests.post(
+            "https://api.vk.com/method/wall.post",
+            data={
+                "access_token": VK_TOKEN,
+                "v": VK_API_VERSION,
+                "owner_id": -group_id,
+                "from_group": 1,
+                "message": message,
+            },
+            timeout=10,
+        )
+        response.raise_for_status()
+        result = response.json()
+    except requests.RequestException as error:
+        app.logger.exception("VK wall.post test request failed")
+        return f"VK wall.post request error: {error}"
+    except ValueError as error:
+        app.logger.exception("VK wall.post test returned non-JSON response")
+        return f"VK wall.post non-JSON response: {error}"
+
+    if "error" in result:
+        app.logger.error("VK wall.post test error: %s", result["error"])
+        return "VK wall.post error:\n" + json.dumps(result, ensure_ascii=False, indent=2)
+
+    post_id = result.get("response", {}).get("post_id")
+    if not post_id:
+        app.logger.error("VK wall.post test response without post_id: %s", result)
+        return "VK wall.post unexpected response:\n" + json.dumps(
+            result,
+            ensure_ascii=False,
+            indent=2,
+        )
+
+    return f"✅ VK wall.post OK\npost_id: {post_id}"
 
 
 def publish_vk_wall_post(message):
